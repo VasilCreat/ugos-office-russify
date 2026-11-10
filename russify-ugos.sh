@@ -36,13 +36,13 @@ if [ "$MODE" = install ]; then
         TMP="$(mktemp -d)"
         echo "Скачиваю переводы..."
         mkdir -p "$TMP/ru"
-        if ! curl -fsSL "$RAW/ru/MANIFEST" -o "$TMP/MANIFEST"; then
+        if ! curl -fsSL "$RAW/ru/MANIFEST?t=$(date +%s)" -o "$TMP/MANIFEST"; then
             echo "Не удалось скачать список переводов: $RAW/ru/MANIFEST"; rm -rf "$TMP"; exit 1
         fi
         while IFS= read -r f; do
             [ -n "$f" ] || continue
             mkdir -p "$TMP/ru/$(dirname "$f")"
-            if ! curl -fsSL "$RAW/ru/$f" -o "$TMP/ru/$f"; then
+            if ! curl -fsSL "$RAW/ru/$f?t=$(date +%s)" -o "$TMP/ru/$f"; then
                 echo "Не удалось скачать $f"; rm -rf "$TMP"; exit 1
             fi
         done < "$TMP/MANIFEST"
