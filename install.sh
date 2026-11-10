@@ -257,7 +257,7 @@ echo "  Готово"
 # --- Шаг 3: Патч ugos-framework (fallback-язык интерфейса) ---
 echo "[3/8] Патч ugos-framework..."
 python3 - << 'PYEOF'
-import glob, shutil, gzip
+import glob, shutil, gzip, os
 
 app_dir = "/volume1/@appstore/com.ugreen.office/www/assets"
 
@@ -273,14 +273,18 @@ else:
     is_gz = fw_path.endswith(".gz")
     print(f"  Файл: {fw_path}")
 
-    # свежий бэкап при каждом запуске (актуален для версии после обновления)
-    shutil.copy2(fw_path, fw_path + '.bak')
-
     if is_gz:
         data = gzip.open(fw_path).read().decode()
     else:
         with open(fw_path, encoding="utf-8") as f:
             data = f.read()
+
+    # Резервная копия: только пока файл «чистый» (в нём ещё есть исходный
+    # шаблон) или копии ещё нет. Иначе повторный запуск затёр бы оригинал
+    # уже пропатченным файлом, и откатиться было бы нельзя.
+    pristine = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}' in data
+    if pristine or not os.path.exists(fw_path + '.bak'):
+        shutil.copy2(fw_path, fw_path + '.bak')
 
     patched_any = False
     for var in ['xn', 'et', 'nt', 'tt', 'lt', 'rt']:
@@ -348,8 +352,6 @@ import gzip, shutil, os
 
 api_path = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/api/documents/api.js"
 
-shutil.copy2(api_path, api_path + '.bak')
-
 with open(api_path) as f:
     data = f.read()
 
@@ -357,6 +359,11 @@ target = 'params += "&lang=ru-RU";'
 
 old_original = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
 old_short_ru = 'params += "&lang=ru";'
+
+# Резервная копия: только пока файл «чистый» или копии ещё нет (повторный
+# запуск не должен затирать оригинал уже пропатченным файлом).
+if old_original in data or not os.path.exists(api_path + '.bak'):
+    shutil.copy2(api_path, api_path + '.bak')
 
 if target in data:
     print("  Уже пропатчено (lang=ru-RU) — пропускаем")
@@ -484,6 +491,10 @@ if [ "$MODE" = "install" ] && [ "$AUTORUN" = "1" ]; then
     fi
     if [ -s "$SELF" ]; then
         chmod 755 "$SELF"
+        # Запоминаем состояние файлов ДО включения таймера: systemd запускает
+        # таймер сразу (загрузка уже прошла), и без этого он начинал бы второй
+        # полный прогон, пока этот ещё не записал отпечаток.
+        state_hash > "$STATE_FILE"
         cat > "$UNIT_DIR/$UNIT_NAME.service" << EOF
 [Unit]
 Description=Russification of UGOS Online Office (re-apply after updates)
@@ -517,8 +528,7 @@ fi
 
 # запоминаем состояние файлов после наших правок, чтобы таймер не делал
 # лишний прогон и перезапуск сервиса
-if [ "$MODE" = "auto" ] || [ "$AUTORUN_OK" = "1" ]; then
-    mkdir -p "$INSTALL_DIR"
+if [ "$MODE" = "auto" ]; then
     state_hash > "$STATE_FILE"
 fi
 
