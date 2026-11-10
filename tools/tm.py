@@ -15,10 +15,10 @@ import json, os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 TM = os.path.join(HERE, "..", "tm", "ru.json")
 # порядок приоритета: что видно чаще всего
-PRIO = ["com.ugreen.desktop", "com.ugreen.ctlmgr", "com.ugreen.filemgr", "com.ugreen.storagemgr",
-        "com.ugreen.appmgr", "com.ugreen.office", "com.ugreen.docker", "com.ugreen.syncbackup",
-        "com.ugreen.kvm", "com.ugreen.music", "com.ugreen.aiconsole", "com.ugreen.versionmgr",
-        "com.ugreen.helpmgr", "com.ugreen.globalsearch", "com.ugreen.editor"]
+PRIO = ["com.ugreen.ctlmgr", "com.ugreen.filemgr", "com.ugreen.storagemgr", "com.ugreen.appmgr",
+        "com.ugreen.docker", "com.ugreen.syncbackup", "com.ugreen.office", "com.ugreen.music",
+        "com.ugreen.aiconsole", "com.ugreen.kvm", "com.ugreen.versionmgr", "com.ugreen.helpmgr",
+        "com.ugreen.globalsearch", "com.ugreen.desktop", "com.ugreen.editor"]
 
 def load_tm():
     return json.load(open(TM, encoding="utf-8")) if os.path.exists(TM) else {}
