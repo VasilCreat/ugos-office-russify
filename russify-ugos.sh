@@ -76,6 +76,7 @@ def frameworks():
 
 if mode == "install":
     installed = []
+    old = open(manifest).read().split() if os.path.exists(manifest) else []
     # 1. переводы
     for key, base in roots.items():
         sd = os.path.join(src, key)
@@ -94,6 +95,18 @@ if mode == "install":
                     open(dst, "wb").write(data); write_gz(dst, data)
                     print("перевод:", rel)
                 installed.append(dst)
+    # 1б. пустые ru-RU.json там, где перевода ещё нет: язык ru-RU выбирается везде
+    #     (рабочий стол задаёт язык приложениям), а непереведённые строки берутся из en-US.
+    empty = 0
+    for key, base in roots.items():
+        if not os.path.isdir(base): continue
+        for dp, dns, fns in os.walk(base):
+            dns[:] = [d for d in dns if d not in ("node_modules", "onlyoffice")]
+            if os.path.basename(dp) == "locale" and "en-US.json" in fns and "ru-RU.json" not in fns:
+                dst = os.path.join(dp, "ru-RU.json")
+                open(dst, "wb").write(b"{}"); write_gz(dst, b"{}")
+                installed.append(dst); empty += 1
+    if empty: print("пустых заготовок ru-RU.json (строки пока на английском): %d" % empty)
     # 2. patch framework
     patched = 0; skipped = 0
     for f in frameworks():
@@ -114,7 +127,7 @@ if mode == "install":
         print("патч framework:", f); patched += 1
     # 3. манифест
     with open(manifest, "w") as mf:
-        mf.write("\n".join(installed) + "\n")
+        mf.write("\n".join(sorted(set(installed) | {p for p in old if os.path.exists(p)})) + "\n")
     print("Готово: переводов %d, патчей framework %d (пропущено без перевода: %d)" % (len(installed), patched, skipped))
 else:
     n = 0
