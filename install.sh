@@ -700,7 +700,8 @@ fi
 
 # запоминаем состояние файлов после наших правок, чтобы таймер не делал
 # лишний прогон и перезапуск сервиса
-if [ "$MODE" = "auto" ]; then
+if [ "$MODE" = "auto" ] || { [ "$MODE" = "install" ] && [ "$AUTORUN" = "0" ]; }; then
+    mkdir -p "$(dirname "$STATE_FILE")"
     state_hash > "$STATE_FILE"
 fi
 

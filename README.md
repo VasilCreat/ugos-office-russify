@@ -9,6 +9,20 @@ Online Office на UGREEN NAS — это обёртка над OnlyOffice. Ру�
 - язык словаря проверки орфографии русский;
 - после обновления Office всё применяется заново автоматически (если включён автозапуск).
 
+## Русификация всего UGOS Pro одной командой
+
+Оболочка (рабочий стол, Панель управления, Файлы, Хранилище и др.) + Online Office, один таймер автоприменения после обновлений:
+
+```
+curl -fsSL -o russify.sh https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/russify.sh
+sudo bash russify.sh                   # установить / обновить всё + автозапуск
+sudo bash russify.sh --no-autorun      # без таймера
+sudo bash russify.sh --remove-autorun  # убрать таймер, русификацию оставить
+sudo bash russify.sh --revert          # вернуть всё как было
+```
+
+После запуска обнови страницу в браузере (Ctrl+F5). Строки без перевода остаются английскими. Отдельные скрипты `install.sh` (только Office) и `russify-ugos.sh` (только оболочка) работают по-прежнему.
+
 ## Авторство
 
 - **Оригинальный скрипт** — Alexander Bikmukhametov ([alexbic.net](https://alexbic.net), [alexbic/ugos-office-russify](https://github.com/alexbic/ugos-office-russify)): русификация интерфейса Online Office.
