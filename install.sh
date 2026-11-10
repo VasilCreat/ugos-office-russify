@@ -3,6 +3,12 @@
 # Русификация UGREEN NAS Online Office (UGOS Pro)
 # + фикс регионального формата (даты/числа/формулы) на ru-RU
 #
+# Автор оригинального скрипта: Alexander Bikmukhametov | alexbic.net
+#   https://github.com/alexbic/ugos-office-russify
+# Продолжение и доработка (регион, язык формул и словаря,
+# идемпотентность, автозапуск): vasiliskin (GitHub: VasilCreat)
+#   https://github.com/VasilCreat/ugos-office-russify
+#
 # Можно (и нужно) запускать заново после каждого обновления
 # приложения Online Office — скрипт идемпотентен: если что-то
 # уже пропатчено, он просто пропустит этот шаг.

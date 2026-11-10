@@ -9,7 +9,10 @@ Online Office на UGREEN NAS — это обёртка над OnlyOffice. Ру�
 - язык словаря проверки орфографии русский;
 - после обновления Office всё применяется заново автоматически (если включён автозапуск).
 
-Основа — проект [alexbic/ugos-office-russify](https://github.com/alexbic/ugos-office-russify), который русифицирует интерфейс. Здесь добавлены исправление региона и язык формул/словаря, идемпотентность и автозапуск.
+## Авторство
+
+- **Оригинальный скрипт** — Alexander Bikmukhametov ([alexbic.net](https://alexbic.net), [alexbic/ugos-office-russify](https://github.com/alexbic/ugos-office-russify)): русификация интерфейса Online Office.
+- **Продолжение и доработка** — vasiliskin ([GitHub: VasilCreat](https://github.com/VasilCreat)): исправление региона, язык формул и словаря по умолчанию, идемпотентность и автозапуск после обновлений.
 
 ## Файлы
 
