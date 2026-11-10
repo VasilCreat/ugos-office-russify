@@ -56,9 +56,11 @@ import gzip, json, os, re, shutil, sys
 
 mode, src, manifest, roots_s = sys.argv[1:5]
 roots = dict(r.split("=", 1) for r in roots_s.split())
-SW = re.compile(r'async switchLang\((\w+),(\w+)(?:=(?:!1|false))?\)\{')
+# switchLang в разных сборках: async/не async, с значением по умолчанию или без.
+# Пустую заглушку switchLang(e){} пропускаем.
+SW = re.compile(r'(?:async )?switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{(?!\})')
 INJ = ' %s="ru-RU";'   # вставляется сразу после "{"
-DONE = re.compile(r'async switchLang\((\w+),(\w+)(?:=(?:!1|false))?\)\{ \1="ru-RU";')
+DONE = re.compile(r'switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{ \1="ru-RU";')
 
 def write_gz(path, data):
     with gzip.GzipFile(path + ".gz", "wb", mtime=0) as g:
