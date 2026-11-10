@@ -14,19 +14,18 @@ Online Office на UGREEN NAS — это обёртка над OnlyOffice. Ру�
 - **Оригинальный скрипт** — Alexander Bikmukhametov ([alexbic.net](https://alexbic.net), [alexbic/ugos-office-russify](https://github.com/alexbic/ugos-office-russify)): русификация интерфейса Online Office.
 - **Продолжение и доработка** — vasiliskin ([GitHub: VasilCreat](https://github.com/VasilCreat)): исправление региона, язык формул и словаря по умолчанию, идемпотентность и автозапуск после обновлений.
 
-## Файлы
-
-| Файл | Назначение |
-| --- | --- |
-| `install.sh` | Применяет русификацию. Идемпотентен, можно запускать повторно. |
-| `setup-autorun.sh` | Ставит systemd-таймер, который сам запускает `install.sh --auto` после обновлений. |
-
 ## Установка
 
 1. Установите **Online Office** из Центра приложений UGOS.
-2. Положите `install.sh` и `setup-autorun.sh` в одну папку на NAS и выполните по SSH:
+2. Подключитесь к NAS по SSH и выполните одну команду.
+
+   Если репозиторий публичный, ничего копировать не нужно:
    ```bash
-   sudo bash install.sh 2>&1 | tee /tmp/install_log.txt
+   curl -fsSL https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/install.sh | sudo bash
+   ```
+   Либо скачайте `install.sh`, положите на NAS и запустите:
+   ```bash
+   sudo bash install.sh
    ```
 3. В браузере на странице документа нажмите `Ctrl+Shift+R`, создайте **новую** таблицу и проверьте: Файл → Параметры → Региональные параметры, затем `=СУММ(`.
 
@@ -39,19 +38,16 @@ rm -rf "$HOME/Library/Application Support/com.ugreen.desktop/Cache/Cache_Data/"
 
 ## Автозапуск после обновлений
 
-```bash
-sudo bash setup-autorun.sh
-```
-
-Скрипт копирует `install.sh` в `/volume1/ugos-russify/` и создаёт systemd-таймер `ugos-office-russify.timer`: раз в 30 минут `install.sh --auto` сверяет «отпечаток» файлов Office. Если они не менялись — ничего не происходит, сервис не перезапускается. Если Office обновился — патчи применяются один раз.
+Включается сам при установке, отдельных действий не нужно. Скрипт сохраняет свою копию в `/volume1/ugos-russify/` (на томе с данными, а не в домашней папке) и создаёт systemd-таймер `ugos-office-russify.timer`. Раз в 30 минут `install.sh --auto` сверяет «отпечаток» файлов Office. Если они не менялись, ничего не происходит и сервис не перезапускается. Если Office обновился, русификация применяется один раз.
 
 ```bash
-systemctl list-timers ugos-office-russify.timer     # таймер на месте?
-journalctl -u ugos-office-russify.service -n 50      # журнал
-sudo bash setup-autorun.sh --remove                  # убрать автозапуск
+systemctl list-timers ugos-office-russify.timer      # таймер на месте?
+journalctl -u ugos-office-russify.service -n 50       # журнал
+sudo bash /volume1/ugos-russify/install.sh --remove-autorun   # убрать автозапуск
+sudo bash install.sh --no-autorun                      # установить без автозапуска
 ```
 
-После обновления **прошивки** проверьте, что таймер остался. Если нет — `sudo bash /volume1/ugos-russify/setup-autorun.sh`.
+После обновления **прошивки** проверьте, что таймер остался. Если его нет, просто запустите установку ещё раз.
 
 ## Что именно патчится
 

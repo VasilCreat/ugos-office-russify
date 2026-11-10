@@ -9,13 +9,23 @@
 # идемпотентность, автозапуск): vasiliskin (GitHub: VasilCreat)
 #   https://github.com/VasilCreat/ugos-office-russify
 #
-# Можно (и нужно) запускать заново после каждого обновления
-# приложения Online Office — скрипт идемпотентен: если что-то
-# уже пропатчено, он просто пропустит этот шаг.
-# Чтобы это происходило само, см. setup-autorun.sh.
+# Установка одной командой, в SSH на NAS:
 #
-# Запуск вручную:        sudo bash install.sh
-# Запуск из автозапуска: sudo bash install.sh --auto
+#   sudo bash install.sh
+#
+# или без копирования файла (когда репозиторий публичный):
+#
+#   curl -fsSL https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/install.sh | sudo bash
+#
+# Скрипт русифицирует Online Office и сам включает автозапуск: раз в
+# 30 минут он проверяет файлы Office и, если приложение обновилось,
+# применяет русификацию заново. Повторный запуск безопасен
+# (идемпотентно: что уже пропатчено, пропускается).
+#
+# Параметры (обычно не нужны):
+#   --no-autorun      только русифицировать, без автозапуска
+#   --remove-autorun  убрать автозапуск (русификация в Office остаётся)
+#   --auto            служебный режим для таймера
 # ============================================================
 set -e
 
@@ -24,14 +34,46 @@ LOCALE_DIR="$APP_DIR/www/locale"
 CONFIG_JSON="$APP_DIR/config.json"
 API_JS="$APP_DIR/onlyoffice/documentserver/web-apps/apps/api/documents/api.js"
 
-# --- Режим --auto (для автозапуска, см. setup-autorun.sh) ---
+# Где лежит копия скрипта для автозапуска (на томе с данными, а не в
+# домашней папке, которую обновления могут очищать) и откуда её брать,
+# если скрипт запущен через curl | bash.
+INSTALL_DIR="${RUSSIFY_INSTALL_DIR:-/volume1/ugos-russify}"
+UNIT_DIR="${RUSSIFY_UNIT_DIR:-/etc/systemd/system}"
+UNIT_NAME="ugos-office-russify"
+RAW_URL="https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/install.sh"
+
+MODE="install"
+AUTORUN=1
+for arg in "$@"; do
+    case "$arg" in
+        --auto)           MODE="auto" ;;
+        --no-autorun)     AUTORUN=0 ;;
+        --remove-autorun) MODE="remove" ;;
+        *) echo "Неизвестный параметр: $arg"; echo "Допустимо: --no-autorun, --remove-autorun"; exit 1 ;;
+    esac
+done
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Нужны права администратора. Запусти так: sudo bash install.sh"
+    exit 1
+fi
+
+if [ "$MODE" = "remove" ]; then
+    systemctl disable --now "$UNIT_NAME.timer" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UNIT_NAME.timer"
+    systemctl daemon-reload
+    echo "Автозапуск удалён. Русификация в Office не откатывалась."
+    echo "Копия скрипта осталась в $INSTALL_DIR, её можно удалить вручную."
+    exit 0
+fi
+
+# --- Режим --auto (его вызывает таймер) ---
 # Скрипт запоминает «отпечаток» файлов Office, которые он правит. Если с
 # прошлого запуска отпечаток не изменился, ничего не делает и не перезапускает
 # сервис. Если изменился (обновление Office), применяет русификацию и
 # запоминает новый отпечаток. Цикла перезапусков быть не может: после одного
 # прогона отпечаток записывается, даже если какой-то патч не применился.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-STATE_FILE="${RUSSIFY_STATE_FILE:-$SCRIPT_DIR/.russify-state}"
+STATE_FILE="${RUSSIFY_STATE_FILE:-$INSTALL_DIR/.russify-state}"
 state_hash() {
     local ds="$APP_DIR/onlyoffice/documentserver/web-apps/apps"
     {
@@ -43,7 +85,7 @@ state_hash() {
         ls -1 "$LOCALE_DIR" 2>/dev/null || true
     } | sha256sum | cut -d' ' -f1
 }
-if [ "$1" = "--auto" ]; then
+if [ "$MODE" = "auto" ]; then
     [ -d "$APP_DIR" ] || exit 0
     if [ "$(cat "$STATE_FILE" 2>/dev/null || true)" = "$(state_hash)" ]; then
         exit 0
@@ -51,11 +93,17 @@ if [ "$1" = "--auto" ]; then
     echo "[auto] Файлы Office изменились (обновление?) — применяю русификацию"
 fi
 
+if [ ! -d "$APP_DIR" ]; then
+    echo "Не найдена папка Online Office: $APP_DIR"
+    echo "Сначала установи Online Office из Центра приложений UGOS."
+    exit 1
+fi
+
 echo "=== Русификация UGOS Online Office ==="
 echo ""
 
 # --- Шаг 1: Создаём/обновляем ru-RU.json ---
-echo "[1/7] Создаём файл локализации ru-RU.json..."
+echo "[1/8] Создаём файл локализации ru-RU.json..."
 python3 - << 'PYEOF'
 import json, gzip, os
 
@@ -201,13 +249,13 @@ print("  ru-RU.json создан/обновлён")
 PYEOF
 
 # --- Шаг 2: Скрываем en-US locale (интерфейс-обёртка) ---
-echo "[2/7] Скрываем en-US locale..."
+echo "[2/8] Скрываем en-US locale..."
 [ -f "$LOCALE_DIR/en-US.json" ] && mv "$LOCALE_DIR/en-US.json" "$LOCALE_DIR/en-US.json.bak"
 [ -f "$LOCALE_DIR/en-US.json.gz" ] && mv "$LOCALE_DIR/en-US.json.gz" "$LOCALE_DIR/en-US.json.gz.bak"
 echo "  Готово"
 
 # --- Шаг 3: Патч ugos-framework (fallback-язык интерфейса) ---
-echo "[3/7] Патч ugos-framework..."
+echo "[3/8] Патч ugos-framework..."
 python3 - << 'PYEOF'
 import glob, shutil, gzip
 
@@ -275,7 +323,7 @@ else:
 PYEOF
 
 # --- Шаг 4: Добавляем ru-RU в config.json Office ---
-echo "[4/7] Добавляем ru-RU в config.json..."
+echo "[4/8] Добавляем ru-RU в config.json..."
 python3 - << 'PYEOF'
 import json
 path = "/volume1/@appstore/com.ugreen.office/config.json"
@@ -294,7 +342,7 @@ PYEOF
 # ВАЖНО: используем полный код ru-RU (не короткий "ru"), иначе OnlyOffice
 # не сможет вывести из него региональный формат (даты/числа/язык формул)
 # и молча откатится на en-US — это и была основная причина проблемы.
-echo "[5/7] Патч api.js (язык + региональный формат редактора)..."
+echo "[5/8] Патч api.js (язык + региональный формат редактора)..."
 python3 - << 'PYEOF'
 import gzip, shutil, os
 
@@ -340,7 +388,7 @@ PYEOF
 # русским, а регион и язык формул останутся en. Здесь задаём им значения
 # по умолчанию. Если пользователь сам выбрал регион/язык формул в настройках
 # редактора, его выбор сохраняется (он хранится в браузере и имеет приоритет).
-echo "[6/7] Патч редактора таблиц (регион, язык формул и словаря по умолчанию)..."
+echo "[6/8] Патч редактора таблиц (регион, язык формул и словаря по умолчанию)..."
 python3 - << 'PYEOF'
 import gzip, os, shutil
 
@@ -404,7 +452,7 @@ for path in targets:
 PYEOF
 
 # --- Шаг 7: Перезапуск сервиса ---
-echo "[7/7] Перезапуск office_serv..."
+echo "[7/8] Перезапуск office_serv..."
 systemctl restart office_serv
 sleep 3
 if systemctl is-active --quiet office_serv; then
@@ -414,14 +462,78 @@ else
     systemctl status office_serv --no-pager
 fi
 
-# в автоматическом режиме запоминаем состояние файлов после наших правок
-if [ "$1" = "--auto" ]; then
+# --- Шаг 8: Автозапуск после обновлений (только при ручном запуске) ---
+AUTORUN_OK=0
+if [ "$MODE" = "install" ] && [ "$AUTORUN" = "1" ]; then
+    echo "[8/8] Включаем автозапуск после обновлений..."
+    mkdir -p "$INSTALL_DIR"
+    SELF="$INSTALL_DIR/install.sh"
+    # Берём копию скрипта: из файла, если запущены из файла, иначе (curl | bash)
+    # скачиваем заново.
+    FROM_FILE=0
+    case "$0" in
+        bash|sh|-bash|-sh|*/bash|*/sh) ;;
+        *) [ -f "$0" ] && FROM_FILE=1 ;;
+    esac
+    if [ "$FROM_FILE" = "1" ]; then
+        if [ "$(readlink -f "$0")" != "$(readlink -f "$SELF" 2>/dev/null || echo "$SELF")" ]; then
+            cp "$0" "$SELF"
+        fi
+    else
+        curl -fsSL "$RAW_URL" -o "$SELF" 2>/dev/null || rm -f "$SELF"
+    fi
+    if [ -s "$SELF" ]; then
+        chmod 755 "$SELF"
+        cat > "$UNIT_DIR/$UNIT_NAME.service" << EOF
+[Unit]
+Description=Russification of UGOS Online Office (re-apply after updates)
+After=office_serv.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash $SELF --auto
+EOF
+        cat > "$UNIT_DIR/$UNIT_NAME.timer" << EOF
+[Unit]
+Description=Periodic check of UGOS Online Office russification
+
+[Timer]
+OnBootSec=3min
+OnActiveSec=1min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target
+EOF
+        systemctl daemon-reload
+        systemctl enable --now "$UNIT_NAME.timer"
+        AUTORUN_OK=1
+        echo "  Автозапуск включён (проверка раз в 30 минут)"
+    else
+        echo "  ВНИМАНИЕ: не удалось сохранить копию скрипта, автозапуск не включён."
+        echo "  Сохрани install.sh в файл и запусти: sudo bash install.sh"
+    fi
+fi
+
+# запоминаем состояние файлов после наших правок, чтобы таймер не делал
+# лишний прогон и перезапуск сервиса
+if [ "$MODE" = "auto" ] || [ "$AUTORUN_OK" = "1" ]; then
+    mkdir -p "$INSTALL_DIR"
     state_hash > "$STATE_FILE"
 fi
 
 echo ""
 echo "=== Готово! ==="
 echo ""
+if [ "$AUTORUN_OK" = "1" ]; then
+    echo "Автозапуск: после обновления Office русификация вернётся сама."
+    echo "  Проверить таймер:  systemctl list-timers $UNIT_NAME.timer"
+    echo "  Журнал:            journalctl -u $UNIT_NAME.service -n 50"
+    echo "  Убрать автозапуск: sudo bash $INSTALL_DIR/install.sh --remove-autorun"
+    echo "  После обновления ПРОШИВКИ проверь, что таймер на месте; если нет —"
+    echo "  запусти установку ещё раз."
+    echo ""
+fi
 echo "Действия на клиенте:"
 echo "  Браузер (Windows/Mac/Linux): нажми Ctrl+Shift+R на странице документа."
 echo "    Если не помогло: F12 -> Application -> Storage -> Clear site data"
