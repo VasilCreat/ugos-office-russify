@@ -25,6 +25,8 @@
 # Параметры (обычно не нужны):
 #   --no-autorun      только русифицировать, без автозапуска
 #   --remove-autorun  убрать автозапуск (русификация в Office остаётся)
+#   --revert          полностью откатить русификацию и убрать автозапуск:
+#                     curl -fsSL https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/install.sh | sudo bash -s -- --revert
 #   --auto            служебный режим для таймера
 # ============================================================
 set -e
@@ -49,13 +51,178 @@ for arg in "$@"; do
         --auto)           MODE="auto" ;;
         --no-autorun)     AUTORUN=0 ;;
         --remove-autorun) MODE="remove" ;;
-        *) echo "Неизвестный параметр: $arg"; echo "Допустимо: --no-autorun, --remove-autorun"; exit 1 ;;
+        --revert)         MODE="revert" ;;
+        *) echo "Неизвестный параметр: $arg"; echo "Допустимо: --no-autorun, --remove-autorun, --revert"; exit 1 ;;
     esac
 done
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "Нужны права администратора. Запусти так: sudo bash install.sh"
     exit 1
+fi
+
+# --- Режим --revert: полный откат ---
+# Отменяет каждую нашу правку точной обратной заменой строк (не зависит от
+# .bak-копий, которые могли быть перезаписаны), возвращает английский
+# перевод, убирает автозапуск (иначе он вернул бы русификацию) и
+# перезапускает office_serv.
+if [ "$MODE" = "revert" ]; then
+    echo "=== Откат русификации UGOS Online Office ==="
+    echo ""
+    echo "[1/3] Убираем автозапуск..."
+    systemctl disable --now "$UNIT_NAME.timer" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$UNIT_NAME.service" "$UNIT_DIR/$UNIT_NAME.timer"
+    systemctl daemon-reload
+    rm -f "${RUSSIFY_STATE_FILE:-$INSTALL_DIR/.russify-state}"
+    if [ ! -d "$APP_DIR" ]; then
+        echo "Папка Online Office не найдена ($APP_DIR), откатывать нечего."
+        exit 0
+    fi
+
+    echo "[2/3] Отменяем правки файлов..."
+    python3 - << 'PYEOF'
+import glob, gzip, json, os
+
+app = "/volume1/@appstore/com.ugreen.office"
+ds = app + "/onlyoffice/documentserver/web-apps/apps"
+locale = app + "/www/locale"
+
+def rd(p):
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+def wr(p, s):
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(s)
+
+def regz(p):
+    """Пересоздать .gz рядом с файлом, если он там был."""
+    if os.path.exists(p + ".gz"):
+        with open(p, "rb") as fin, gzip.open(p + ".gz", "wb") as fout:
+            fout.write(fin.read())
+
+def undo(path, pairs, label):
+    """pairs: (что наши патчи поставили, что было в оригинале)."""
+    if not os.path.exists(path):
+        print(f"  {label}: файл не найден, пропускаем")
+        return
+    data = rd(path)
+    n = 0
+    for new, old in pairs:
+        if new in data:
+            data = data.replace(new, old)
+            n += 1
+    if n:
+        wr(path, data)
+        regz(path)
+        # вернуть сжатую .br, которую мы отключали при патче
+        if os.path.exists(path + ".br.stale") and not os.path.exists(path + ".br"):
+            os.rename(path + ".br.stale", path + ".br")
+        print(f"  {label}: откачено правок: {n}")
+    else:
+        print(f"  {label}: наших правок нет")
+
+# 1. редактор таблиц: app.js и ie/app.js
+sse = ds + "/spreadsheeteditor/main/"
+sse_pairs = [
+    ('this.appOptions.region="ru-ru"',
+     'this.appOptions.region="string"==typeof this.editorConfig.region?this.editorConfig.region.toLowerCase():this.editorConfig.region'),
+    ('this.appOptions={},this.appOptions.lang="ru-RU"}',
+     'this.appOptions={},this.appOptions.lang=t.config.lang}'),
+    ('this.appOptions.lang="ru-RU",this.appOptions.location=',
+     'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
+]
+for sub in ("app.js", "ie/app.js"):
+    undo(sse + sub, sse_pairs, "редактор таблиц " + sub)
+
+# 2. api.js
+api_orig = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
+undo(ds + "/api/documents/api.js",
+     [('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
+     "api.js")
+
+# 3. ugos-framework: два патча. «Сообщение родительскому окну» откатывается
+#    точной заменой. Патч «fallback» ставил <переменная>="ru-RU" вместо
+#    <переменная>="en-US" (на новых сборках он не находится и не применялся).
+PARENT_NEW = '"ugos:locale-sync-parent",{detail:{locale:"ru-RU"}}'
+PARENT_OLD = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}'
+
+def fw_clean(data):
+    n = 0
+    if PARENT_NEW in data:
+        data = data.replace(PARENT_NEW, PARENT_OLD)
+        n += 1
+    for var in ("xn", "et", "nt", "tt", "lt", "rt"):
+        new, old = f'{var}="ru-RU"', f'{var}="en-US"'
+        if data.count(new) == 1 and data.count(old) == 0:
+            data = data.replace(new, old)
+            n += 1
+            break
+    return data, n
+
+fws = [f for f in glob.glob(app + "/www/assets/ugos-framework-*.js") if not f.endswith(".bak")]
+for f in fws:
+    label = "ugos-framework " + os.path.basename(f)
+    bak = f + ".bak"
+    b = rd(bak) if os.path.exists(bak) else ""
+    if PARENT_OLD in b and PARENT_NEW not in b:
+        wr(f, b)                       # есть чистая копия — берём её целиком
+        regz(f)
+        print(f"  {label}: восстановлен из .bak")
+    else:
+        data, n = fw_clean(rd(f))
+        if n:
+            wr(f, data)
+            regz(f)
+            print(f"  {label}: откачено правок: {n}")
+        else:
+            print(f"  {label}: наших правок нет")
+for gz in glob.glob(app + "/www/assets/ugos-framework-*.js.gz"):
+    if gz[:-3] in fws:
+        continue
+    data, n = fw_clean(gzip.open(gz).read().decode())
+    if n:
+        with gzip.open(gz, "wb") as fo:
+            fo.write(data.encode())
+        print("  ugos-framework (.gz):", "откачено правок:", n)
+
+# 4. перевод: убрать русский, вернуть английский
+for name in ("ru-RU.json", "ru-RU.json.gz"):
+    p = os.path.join(locale, name)
+    if os.path.exists(p):
+        os.remove(p)
+        print("  удалён", name)
+for name in ("en-US.json", "en-US.json.gz"):
+    p, b = os.path.join(locale, name), os.path.join(locale, name + ".bak")
+    if os.path.exists(b) and not os.path.exists(p):
+        os.rename(b, p)
+        print("  возвращён", name)
+
+# 5. config.json: убрать ru-RU из списка языков
+cfg = app + "/config.json"
+if os.path.exists(cfg):
+    c = json.load(open(cfg, encoding="utf-8"))
+    if "ru-RU" in c.get("languageList", []):
+        c["languageList"] = [x for x in c["languageList"] if x != "ru-RU"]
+        with open(cfg, "w", encoding="utf-8") as f:
+            json.dump(c, f, indent=2)
+        print("  config.json: ru-RU убран из languageList")
+PYEOF
+
+    echo "[3/3] Перезапуск office_serv..."
+    systemctl restart office_serv
+    sleep 3
+    if systemctl is-active --quiet office_serv; then
+        echo "  Сервис запущен успешно"
+    else
+        echo "  ОШИБКА: сервис не запустился"
+        systemctl status office_serv --no-pager
+    fi
+    echo ""
+    echo "=== Откат выполнен ==="
+    echo "Теперь в браузере нажми Ctrl+Shift+R и открой Online Office."
+    echo "Вернуть русификацию можно той же командой установки."
+    exit 0
 fi
 
 if [ "$MODE" = "remove" ]; then
