@@ -56,7 +56,7 @@ import gzip, json, os, re, shutil, sys
 
 mode, src, manifest, roots_s = sys.argv[1:5]
 roots = dict(r.split("=", 1) for r in roots_s.split())
-SW = re.compile(r'async switchLang\((\w+),(\w+)=!1\)\{')
+SW = re.compile(r'async switchLang\((\w+),(\w+)=(?:!1|false)\)\{')
 INJ = ' %s="ru-RU";'   # вставляется сразу после "{"
 DONE = re.compile(r'async switchLang\((\w+),(\w+)=!1\)\{ \1="ru-RU";')
 
@@ -127,7 +127,10 @@ if mode == "install":
             continue
         m = SW.search(s)
         if not m:
-            print("ВНИМАНИЕ: не найдена switchLang в", f); continue
+            print("ВНИМАНИЕ: не найдена switchLang в", f)
+            for mm in list(re.finditer(r"switchLang\(", s))[:4]:
+                print("     >>", s[max(0, mm.start() - 40):mm.start() + 110].replace("\n", " "))
+            continue
         if not os.path.exists(f + ".ruorig"):
             shutil.copy2(f, f + ".ruorig")
         new = s[:m.end()] + INJ % m.group(1) + s[m.end():]
