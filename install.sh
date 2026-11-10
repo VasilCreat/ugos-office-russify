@@ -415,10 +415,15 @@ with open(path, 'rb') as fin:
 print("  ru-RU.json создан/обновлён")
 PYEOF
 
-# --- Шаг 2: Скрываем en-US locale (интерфейс-обёртка) ---
-echo "[2/8] Скрываем en-US locale..."
-[ -f "$LOCALE_DIR/en-US.json" ] && mv "$LOCALE_DIR/en-US.json" "$LOCALE_DIR/en-US.json.bak"
-[ -f "$LOCALE_DIR/en-US.json.gz" ] && mv "$LOCALE_DIR/en-US.json.gz" "$LOCALE_DIR/en-US.json.gz.bak"
+# --- Шаг 2: Возвращаем en-US locale (если ранние версии скрипта его спрятали) ---
+# Фреймворк интерфейса ВСЕГДА загружает en-US как язык по умолчанию. Без этого
+# файла окно Online Office остаётся пустым (404 на locale/en-US.json).
+echo "[2/8] Проверяем en-US locale..."
+for n in en-US.json en-US.json.gz; do
+    if [ ! -f "$LOCALE_DIR/$n" ] && [ -f "$LOCALE_DIR/$n.bak" ]; then
+        mv "$LOCALE_DIR/$n.bak" "$LOCALE_DIR/$n" && echo "  возвращён $n"
+    fi
+done
 echo "  Готово"
 
 # --- Шаг 3: Патч ugos-framework (fallback-язык интерфейса) ---
