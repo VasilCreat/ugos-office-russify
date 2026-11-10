@@ -22,7 +22,7 @@ case "$1" in
 esac
 if [ "$(id -u)" -ne 0 ]; then echo "Запусти с sudo: sudo bash $0 $*"; exit 1; fi
 
-REPO_TGZ="${RUSSIFY_TGZ_URL:-https://codeload.github.com/VasilCreat/ugos-office-russify/tar.gz/refs/heads/main}"
+RAW="${RUSSIFY_RAW:-https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main}"
 ROOTS="${RUSSIFY_ROOTS:-ugreen=/ugreen/@appstore volume1=/volume1/@appstore}"
 STATE_DIR="${RUSSIFY_INSTALL_DIR:-/volume1/ugos-russify}"
 MANIFEST="$STATE_DIR/shell-manifest.txt"
@@ -35,9 +35,18 @@ if [ "$MODE" = install ]; then
     else
         TMP="$(mktemp -d)"
         echo "Скачиваю переводы..."
-        if ! curl -fsSL "$REPO_TGZ" -o "$TMP/r.tgz"; then echo "Не удалось скачать $REPO_TGZ"; rm -rf "$TMP"; exit 1; fi
-        tar -xzf "$TMP/r.tgz" -C "$TMP" || { echo "Не удалось распаковать"; rm -rf "$TMP"; exit 1; }
-        SRC="$(ls -d "$TMP"/*/ | head -1)ru"
+        mkdir -p "$TMP/ru"
+        if ! curl -fsSL "$RAW/ru/MANIFEST" -o "$TMP/MANIFEST"; then
+            echo "Не удалось скачать список переводов: $RAW/ru/MANIFEST"; rm -rf "$TMP"; exit 1
+        fi
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            mkdir -p "$TMP/ru/$(dirname "$f")"
+            if ! curl -fsSL "$RAW/ru/$f" -o "$TMP/ru/$f"; then
+                echo "Не удалось скачать $f"; rm -rf "$TMP"; exit 1
+            fi
+        done < "$TMP/MANIFEST"
+        SRC="$TMP/ru"
     fi
     [ -d "$SRC" ] || { echo "Нет каталога переводов: $SRC"; exit 1; }
 fi
