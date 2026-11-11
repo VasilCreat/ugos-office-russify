@@ -9,19 +9,24 @@ Online Office на UGREEN NAS — это обёртка над OnlyOffice. Ру�
 - язык словаря проверки орфографии русский;
 - после обновления Office всё применяется заново автоматически (если включён автозапуск).
 
-## Русификация всего UGOS Pro одной командой
+## Две команды: только Office или вся система
 
-Оболочка (рабочий стол, Панель управления, Файлы, Хранилище и др.) + Online Office, один таймер автоприменения после обновлений:
+| Что | Установить | Откатить |
+|---|---|---|
+| Только Online Office | `sudo bash install.sh` | `sudo bash install.sh --revert` |
+| Вся система (оболочка + Office) | `sudo bash russify.sh` | `sudo bash russify.sh --revert` |
+
+Скачать скрипты:
 
 ```
+curl -fsSL -o install.sh https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/install.sh
 curl -fsSL -o russify.sh https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/main/russify.sh
-sudo bash russify.sh                   # установить / обновить всё + автозапуск
-sudo bash russify.sh --no-autorun      # без таймера
-sudo bash russify.sh --remove-autorun  # убрать таймер, русификацию оставить
-sudo bash russify.sh --revert          # вернуть всё как было
 ```
 
-После запуска обнови страницу в браузере (Ctrl+F5). Строки без перевода остаются английскими. Отдельные скрипты `install.sh` (только Office) и `russify-ugos.sh` (только оболочка) работают по-прежнему.
+- `install.sh` русифицирует только Online Office (регион, язык формул, словарь). Свой таймер автоприменения.
+- `russify.sh` русифицирует оболочку UGOS (рабочий стол, Панель управления, Файлы, Хранилище, Docker и др.) и Office, ставит один таймер автоприменения после обновлений и снимает старый таймер Office. Строки без перевода остаются английскими.
+- Параметры обоих: `--no-autorun` (без таймера), `--remove-autorun` (убрать таймер), `--revert` (откат и удаление таймера).
+- После запуска обновите страницу в браузере (Ctrl+F5).
 
 ## Авторство
 
