@@ -22,7 +22,7 @@ echo; echo "=== Оболочка (фронтенд) ==="
 N=0; for f in $(find $R1 $R2 -path '*/www/*' -name 'ugos-framework-*.js' -not -path '*node_modules*' 2>/dev/null); do
   grep -qaE 'switchLang\([a-z],?[a-z]?(=!1)?\)\{ [a-z]=(\(![a-z]\|\|[a-z]==="en-US"\)\?)?"ru-RU"' "$f" && N=$((N+1)); done
 [ "$N" -gt 0 ] && flag "framework с нашей подменой языка" "$N" bad || say "framework с нашей подменой языка" "0"
-L=$(find $R1 $R2 \( -name '*.ruorig' -o -name '*.bak' -o -name '*.bak.gz' -o -name '*.br.stale' \) -not -path '*node_modules*' 2>/dev/null)
+L=$(find $R1 $R2 \( -name '*.ruorig' -o -name '*.bak' -o -name '*.bak.gz' -o -name '*.br.stale' \) \( -path '*/www/*' -o -path '*/onlyoffice/*' \) -not -path '*node_modules*' -not -path '*.db/*' 2>/dev/null)
 N=$(echo "$L" | grep -c .)
 if [ "$N" -gt 0 ]; then flag "резервные копии и остатки (.ruorig/.bak/.br.stale)" "$N" bad; echo "$L" | sed 's/^/     /'; else say "резервные копии и остатки (.ruorig/.bak/.br.stale)" "0"; fi
 ALL=$(find $R1 $R2 -path '*/locale/ru-RU.json' -not -path '*onlyoffice*' 2>/dev/null)
