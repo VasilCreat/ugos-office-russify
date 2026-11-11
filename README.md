@@ -28,6 +28,18 @@ curl -fsSL -o russify.sh https://raw.githubusercontent.com/VasilCreat/ugos-offic
 - Параметры обоих: `--no-autorun` (без таймера), `--remove-autorun` (убрать таймер), `--revert` (откат и удаление таймера).
 - После запуска обновите страницу в браузере (Ctrl+F5).
 
+**Нюансы**
+
+- `russify.sh --revert` откатывает и оболочку, и Office. Чтобы откатить только Office, оставив оболочку русской, используйте `install.sh --revert`.
+- Если запускать оба скрипта по очереди, останется один общий таймер от `russify.sh` (он снимает старый таймер Office).
+- GitHub кэширует ветку `main` на несколько минут. Если после обновления репозитория скрипт скачал старую версию, укажите в ссылке хэш коммита вместо `main`, а для переводов задайте `RUSSIFY_RAW`:
+  ```
+  curl -fsSL -o russify.sh https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/<хэш-коммита>/russify.sh
+  sudo RUSSIFY_RAW=https://raw.githubusercontent.com/VasilCreat/ugos-office-russify/<хэш-коммита> bash russify.sh
+  ```
+- Таймер проверяет файлы раз в 30 минут. После обновления прошивки русификация вернётся не мгновенно; если интерфейс остался английским, запустите скрипт ещё раз.
+- Проверить таймер: `systemctl list-timers ugos-russify.timer`, журнал: `journalctl -u ugos-russify.service -n 50`.
+
 ## Авторство
 
 - **Оригинальный скрипт** — Alexander Bikmukhametov ([alexbic.net](https://alexbic.net), [alexbic/ugos-office-russify](https://github.com/alexbic/ugos-office-russify)): русификация интерфейса Online Office.
