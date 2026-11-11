@@ -83,6 +83,7 @@ def restore_br(path):
 
 # /var/lib/ugb/<приложение>/config.json: рабочая копия конфигов, откуда службы берут названия приложений
 UGB = os.environ.get("RUSSIFY_UGB", "/var/lib/ugb")
+META_DIRS = os.environ.get("RUSSIFY_META", "/ugreen/@cache /volume1/@cache").split()
 
 def lang_configs():
     for key, base in roots.items():
@@ -90,6 +91,10 @@ def lang_configs():
             yield c
     for c in sorted(glob.glob(os.path.join(UGB, "*", "config.json"))):
         if not os.path.islink(c): yield c
+    # метаданные пакетов (JSON с тем же массивом i18n): рабочий стол берёт названия приложений отсюда
+    for d in META_DIRS:
+        for c in sorted(glob.glob(os.path.join(d, ".*upk.meta"))):
+            if not os.path.islink(c): yield c
 
 def frameworks():
     for key, base in roots.items():

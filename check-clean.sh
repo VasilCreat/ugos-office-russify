@@ -16,7 +16,7 @@ N=$(grep -l '"languageList"[^]]*"ru-RU"' $R1/*/config.json $R2/*/config.json 2>/
 N=$(grep -l '"langName":"ru-RU"' $R1/*/config.json $R2/*/config.json 2>/dev/null | wc -l)
 [ "$N" -gt 0 ] && flag "config.json с записью i18n ru-RU" "$N" bad || say "config.json с записью i18n ru-RU" "0"
 if grep -A1 '^\[ko-KR\]' /ugreen/language/.language.ini 2>/dev/null | grep -qP '[А-Яа-яЁё]'; then flag ".language.ini: слот ko-KR переименован в «Русский»" "ДА (наше)" bad; else say ".language.ini: слот ko-KR" "оригинальный"; fi
-N=$(grep -lP '"langName":"ko-KR"[^}]*[А-Яа-яЁё]' $R1/*/config.json $R2/*/config.json /var/lib/ugb/*/config.json 2>/dev/null | wc -l)
+N=$(grep -lP '"langName":"ko-KR"[^}]*[А-Яа-яЁё]' $R1/*/config.json $R2/*/config.json /var/lib/ugb/*/config.json /ugreen/@cache/.*upk.meta /volume1/@cache/.*upk.meta 2>/dev/null | wc -l)
 [ "$N" -gt 0 ] && flag "config.json с русской записью i18n в слоте ko-KR" "$N" bad || say "config.json с русской записью i18n в слоте ko-KR" "0"
 say "язык пользователя (ugos.lang, uid 1000)" "$(cat /ugreen/.config/.nas/1000/ugos.lang 2>/dev/null || echo '?')"
 
