@@ -203,6 +203,17 @@ for gz in glob.glob(app + "/www/assets/ugos-framework-*.js.gz"):
             fo.write(data.encode())
         print("  ugos-framework (.gz):", "откачено правок:", n)
 
+# 3б. резервные копии, которые создавала установка (правки уже откачены, копии больше не нужны)
+ba = [sse + "app.js.ruorig", sse + "ie/app.js.ruorig", ds + "/api/documents/api.js.bak", ds + "/api/documents/api.js.bak.gz"]
+ba += glob.glob(app + "/www/assets/ugos-framework-*.js.bak*")
+for p in ba:
+    if os.path.exists(p):
+        os.remove(p)
+        print("  удалена резервная копия:", os.path.basename(p))
+for p in (sse + "app.js.br.stale", sse + "ie/app.js.br.stale", ds + "/api/documents/api.js.br.stale"):
+    if os.path.exists(p) and not os.path.exists(p[:-6]):
+        os.rename(p, p[:-6])
+
 # 4. перевод: убрать русский, вернуть английский
 for name in ("ru-RU.json", "ru-RU.json.gz"):
     p = os.path.join(locale, name)

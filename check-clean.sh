@@ -22,10 +22,9 @@ echo; echo "=== Оболочка (фронтенд) ==="
 N=0; for f in $(find $R1 $R2 -path '*/www/*' -name 'ugos-framework-*.js' -not -path '*node_modules*' 2>/dev/null); do
   grep -qaE 'switchLang\([a-z],?[a-z]?(=!1)?\)\{ [a-z]=(\(![a-z]\|\|[a-z]==="en-US"\)\?)?"ru-RU"' "$f" && N=$((N+1)); done
 [ "$N" -gt 0 ] && flag "framework с нашей подменой языка" "$N" bad || say "framework с нашей подменой языка" "0"
-N=$(find $R1 $R2 -name '*.ruorig' -not -path '*node_modules*' 2>/dev/null | wc -l)
-[ "$N" -gt 0 ] && flag "резервные копии .ruorig" "$N" bad || say "резервные копии .ruorig" "0"
-N=$(find $R1 $R2 -path '*/www/*' \( -name '*.bak' -o -name '*.br.stale' \) -not -path '*node_modules*' 2>/dev/null | wc -l)
-[ "$N" -gt 0 ] && flag "остатки .bak / .br.stale" "$N" bad || say "остатки .bak / .br.stale" "0"
+L=$(find $R1 $R2 \( -name '*.ruorig' -o -name '*.bak' -o -name '*.bak.gz' -o -name '*.br.stale' \) -not -path '*node_modules*' 2>/dev/null)
+N=$(echo "$L" | grep -c .)
+if [ "$N" -gt 0 ]; then flag "резервные копии и остатки (.ruorig/.bak/.br.stale)" "$N" bad; echo "$L" | sed 's/^/     /'; else say "резервные копии и остатки (.ruorig/.bak/.br.stale)" "0"; fi
 ALL=$(find $R1 $R2 -path '*/locale/ru-RU.json' -not -path '*onlyoffice*' 2>/dev/null)
 TOT=$(echo "$ALL" | grep -c . ); EMP=0; for f in $ALL; do [ "$(tr -d ' \n' < "$f")" = "{}" ] && EMP=$((EMP+1)); done
 say "ru-RU.json: всего / пустых заглушек / с переводом" "$TOT / $EMP / $((TOT-EMP))"
