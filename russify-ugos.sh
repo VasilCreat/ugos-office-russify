@@ -121,6 +121,16 @@ def legacy_cleanup():
             data = open(o, "rb").read()
             open(f, "wb").write(data); write_gz(f, data); restore_br(f)
             os.remove(o); n += 1
+    for base in roots.values():                              # пустые заглушки ru-RU.json прошлых версий
+        for dp, dns, fns in os.walk(base):
+            if "node_modules" in dp or "onlyoffice" in dp: continue
+            if "ru-RU.json" in fns:
+                p = os.path.join(dp, "ru-RU.json")
+                try:
+                    if open(p, encoding="utf-8").read().strip() in ("{}", ""):
+                        os.remove(p); n += 1
+                        if os.path.exists(p + ".gz"): os.remove(p + ".gz")
+                except (OSError, ValueError): pass
     k = 0
     for c in lang_configs():                                 # ru-RU в languageList и i18n
         t = open(c, encoding="utf-8").read(); new = t
