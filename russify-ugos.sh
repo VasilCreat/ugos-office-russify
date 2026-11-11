@@ -52,7 +52,7 @@ if [ "$MODE" = install ]; then
 fi
 
 python3 - "$MODE" "${SRC:-}" "$MANIFEST" "$ROOTS" << 'PY'
-import gzip, json, os, re, shutil, sys
+import glob, gzip, json, os, re, shutil, sys
 
 mode, src, manifest, roots_s = sys.argv[1:5]
 roots = dict(r.split("=", 1) for r in roots_s.split())
@@ -75,6 +75,53 @@ def restore_br(path):
     s = path + ".br.stale"
     if os.path.exists(s):
         os.replace(s, path + ".br")
+
+LANGDIR = os.environ.get("RUSSIFY_LANGDIR", "/ugreen/language")
+LANG_RE = re.compile(r'("languageList"\s*:\s*\[)([^\]]*)(\])')
+
+def lang_configs():
+    for key, base in roots.items():
+        for c in sorted(glob.glob(os.path.join(base, "*", "config.json"))):
+            yield c
+
+def lang_add():
+    """Добавляет Русский в выпадающий список языков (Панель управления -> Время и язык)."""
+    n = 0
+    for c in lang_configs():
+        t = open(c, encoding="utf-8").read()
+        m = LANG_RE.search(t)
+        if not m or '"en-US"' not in m.group(2) or '"ru-RU"' in m.group(2):
+            continue
+        t = t[:m.end(2)] + ',"ru-RU"' + t[m.end(2):]
+        open(c, "w", encoding="utf-8").write(t); n += 1
+    ini = os.path.join(LANGDIR, ".language.ini")
+    if os.path.exists(ini):
+        t = open(ini, encoding="utf-8").read()
+        if "[ru-RU]" not in t:
+            if not t.endswith("\n"): t += "\n"
+            t += "\n[ru-RU]\nname=Русский\nenable=true\n"
+            open(ini, "w", encoding="utf-8").write(t)
+            print("язык: Русский добавлен в", ini)
+    print("язык: ru-RU добавлен в languageList у приложений: %d" % n)
+
+def lang_remove():
+    n = 0
+    for c in lang_configs():
+        t = open(c, encoding="utf-8").read()
+        m = LANG_RE.search(t)
+        if not m or '"ru-RU"' not in m.group(2):
+            continue
+        items = [x for x in re.findall(r'"[^"]*"', m.group(2)) if x != '"ru-RU"']
+        t = t[:m.start(2)] + ",".join(items) + t[m.end(2):]
+        open(c, "w", encoding="utf-8").write(t); n += 1
+    ini = os.path.join(LANGDIR, ".language.ini")
+    if os.path.exists(ini):
+        t = open(ini, encoding="utf-8").read()
+        t2 = re.sub(r"\n?\[ru-RU\]\nname=[^\n]*\nenable=[^\n]*\n?", "\n", t).rstrip("\n") + "\n"
+        if t2 != t:
+            open(ini, "w", encoding="utf-8").write(t2)
+            print("язык: Русский убран из", ini)
+    print("язык: ru-RU убран из languageList у приложений: %d" % n)
 
 def frameworks():
     for key, base in roots.items():
@@ -139,6 +186,8 @@ if mode == "install":
         data = new.encode("utf-8")
         open(f, "wb").write(data); write_gz(f, data); disable_br(f)
         print("патч framework:", f); patched += 1
+    # 2б. выбор «Русский» в списке языков
+    lang_add()
     # 3. манифест
     with open(manifest, "w") as mf:
         mf.write("\n".join(sorted(set(installed) | {p for p in old if os.path.exists(p)})) + "\n")
@@ -161,6 +210,7 @@ else:
                 open(p, "wb").write(b"{}"); write_gz(p, b"{}")
                 print("перевод убран (оставлена пустая заглушка):", p)
         os.remove(manifest)
+    lang_remove()
     print("Откат завершён, восстановлено framework: %d" % n)
 PY
 RC=$?
