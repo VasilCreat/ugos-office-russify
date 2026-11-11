@@ -81,10 +81,15 @@ def restore_br(path):
     if os.path.exists(s):
         os.replace(s, path + ".br")
 
+# /var/lib/ugb/<приложение>/config.json: рабочая копия конфигов, откуда службы берут названия приложений
+UGB = os.environ.get("RUSSIFY_UGB", "/var/lib/ugb")
+
 def lang_configs():
     for key, base in roots.items():
         for c in sorted(glob.glob(os.path.join(base, "*", "config.json"))):
             yield c
+    for c in sorted(glob.glob(os.path.join(UGB, "*", "config.json"))):
+        if not os.path.islink(c): yield c
 
 def frameworks():
     for key, base in roots.items():
