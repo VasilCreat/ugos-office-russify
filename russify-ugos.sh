@@ -53,6 +53,11 @@ if [ "$MODE" = install ]; then
     [ -d "$SRC" ] || { echo "Нет каталога переводов: $SRC"; exit 1; }
 fi
 
+# Режим без принудительного русского (эксперимент): RUSSIFY_NOFORCE=1 включает (запоминается), =0 выключает.
+[ "${RUSSIFY_NOFORCE:-}" = 1 ] && touch "$STATE_DIR/noforce"
+[ "${RUSSIFY_NOFORCE:-}" = 0 ] && rm -f "$STATE_DIR/noforce"
+export RUSSIFY_NOFORCE_ON=0; [ -e "$STATE_DIR/noforce" ] && RUSSIFY_NOFORCE_ON=1
+
 python3 - "$MODE" "${SRC:-}" "$MANIFEST" "$ROOTS" << 'PY'
 import glob, gzip, json, os, re, shutil, sys
 
@@ -228,6 +233,13 @@ if mode == "install":
         if not os.path.exists(os.path.join(page, "locale", "ru-RU.json")):
             skipped += 1; continue
         s = open(f, encoding="utf-8").read()
+        if os.environ.get("RUSSIFY_NOFORCE_ON") == "1":
+            # без принудительной подмены: язык выбирает сама система (русский есть в её списке)
+            if os.path.exists(f + ".ruorig"):
+                data = open(f + ".ruorig", "rb").read()
+                open(f, "wb").write(data); write_gz(f, data); restore_br(f); os.remove(f + ".ruorig")
+                print("снят патч framework (режим без подмены):", f)
+            continue
         if DONE.search(s):
             continue
         if DONE_OLD.search(s) and os.path.exists(f + ".ruorig"):
