@@ -56,7 +56,7 @@ fetch() {  # fetch <имя>
     local n="$1" here; here="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" 2>/dev/null && pwd)"
     # Файл рядом берём только из клона репозитория (или при RUSSIFY_LOCAL=1): иначе можно подхватить
     # устаревшую копию, оставшуюся в домашней папке от прошлых запусков.
-    if [ -f "$here/$n" ] && [ "$here" != "$INSTALL_DIR" ] && { [ -e "$here/.git" ] || [ -n "$RUSSIFY_LOCAL" ]; }; then
+    if [ -f "$here/$n" ] && [ "$here" != "$INSTALL_DIR" ] && { [ -e "$here/.git" ] || [ -n "${RUSSIFY_LOCAL:-}" ]; }; then
         cp "$here/$n" "$INSTALL_DIR/$n"
     elif [ "$MODE" != auto ] || [ ! -s "$INSTALL_DIR/$n" ]; then
         curl -fsSL "$RAW/$n?t=$(date +%s)" -o "$INSTALL_DIR/$n.new" && mv "$INSTALL_DIR/$n.new" "$INSTALL_DIR/$n" \
