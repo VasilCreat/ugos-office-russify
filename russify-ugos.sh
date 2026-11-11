@@ -46,6 +46,8 @@ if [ "$MODE" = install ]; then
                 echo "Не удалось скачать $f"; rm -rf "$TMP"; exit 1
             fi
         done < "$TMP/MANIFEST"
+        curl -fsSL "$RAW/ru/apps-i18n.json?t=$(date +%s)" -o "$TMP/ru/apps-i18n.json" \
+            || echo "Не удалось скачать apps-i18n.json (названия приложений на рабочем столе останутся английскими)"
         SRC="$TMP/ru"
     fi
     [ -d "$SRC" ] || { echo "Нет каталога переводов: $SRC"; exit 1; }
@@ -126,6 +128,57 @@ def lang_remove():
             print("язык: Русский убран из", ini)
     print("язык: ru-RU убран из languageList у приложений: %d" % n)
 
+I18N_KEY = re.compile(r'"i18n"\s*:\s*')
+
+def i18n_span(t):
+    """Находит массив i18n в тексте config.json: (начало, конец, список) или None."""
+    m = I18N_KEY.search(t)
+    if not m: return None
+    try:
+        arr, end = json.JSONDecoder().raw_decode(t, m.end())
+    except ValueError:
+        return None
+    return (m.end(), end, arr) if isinstance(arr, list) else None
+
+def dump_i18n(arr):
+    return json.dumps(arr, ensure_ascii=False, separators=(",", ":"))
+
+def i18n_add(src):
+    """Добавляет запись ru-RU (названия и описания приложений) в блок i18n config.json."""
+    p = os.path.join(src, "apps-i18n.json")
+    if not os.path.exists(p):
+        print("названия приложений: нет apps-i18n.json, пропуск"); return
+    tr = json.load(open(p, encoding="utf-8"))
+    n = 0
+    for c in lang_configs():
+        t = open(c, encoding="utf-8").read()
+        sp = i18n_span(t)
+        if not sp: continue
+        a, b, arr = sp
+        en = next((x for x in arr if x.get("langName") == "en-US"), None)
+        if not en or en.get("name") not in tr["apps"]: continue
+        r = tr["apps"][en["name"]]
+        rec = dict(en); rec["langName"] = "ru-RU"; rec["name"] = r["name"]
+        if en.get("description") == r["description_en"]: rec["description"] = r["description"]
+        if "tags" in en: rec["tags"] = [tr["tags"].get(x, x) for x in en["tags"]]
+        arr = [x for x in arr if x.get("langName") != "ru-RU"] + [rec]
+        new = t[:a] + dump_i18n(arr) + t[b:]
+        if new != t:
+            open(c, "w", encoding="utf-8").write(new); n += 1
+    print("названия приложений: ru-RU записей добавлено/обновлено: %d" % n)
+
+def i18n_remove():
+    n = 0
+    for c in lang_configs():
+        t = open(c, encoding="utf-8").read()
+        sp = i18n_span(t)
+        if not sp: continue
+        a, b, arr = sp
+        keep = [x for x in arr if x.get("langName") != "ru-RU"]
+        if len(keep) == len(arr): continue
+        open(c, "w", encoding="utf-8").write(t[:a] + dump_i18n(keep) + t[b:]); n += 1
+    print("названия приложений: ru-RU убран у приложений: %d" % n)
+
 def frameworks():
     for key, base in roots.items():
         if not os.path.isdir(base): continue
@@ -193,6 +246,7 @@ if mode == "install":
         print("патч framework:", f); patched += 1
     # 2б. выбор «Русский» в списке языков
     lang_add()
+    i18n_add(src)
     # 3. манифест
     with open(manifest, "w") as mf:
         mf.write("\n".join(sorted(set(installed) | {p for p in old if os.path.exists(p)})) + "\n")
@@ -216,6 +270,7 @@ else:
                 print("перевод убран (оставлена пустая заглушка):", p)
         os.remove(manifest)
     lang_remove()
+    i18n_remove()
     print("Откат завершён, восстановлено framework: %d" % n)
 PY
 RC=$?

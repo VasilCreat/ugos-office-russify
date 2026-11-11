@@ -1,0 +1,109 @@
+{
+ "apps": {
+  "App Center": {
+   "name": "Центр приложений",
+   "description_en": "App Center is an app management platform of UGREEN NAS.",
+   "description": "Центр приложений — платформа управления приложениями UGREEN NAS."
+  },
+  "Control Panel": {
+   "name": "Панель управления",
+   "description_en": "The control panel is the user interface in UGOS PRO used to control and manage the hardware and software settings of UGREEN NAS devices. \nIt allows administrator to view and change basic system settings, such as connecting UGREEN　NAS devices to the network for access, \nmanaging users and their permissions, security controls, etc.",
+   "description": "Панель управления — пользовательский интерфейс UGOS PRO для управления аппаратными и программными настройками устройств UGREEN NAS. \nОна позволяет администратору просматривать и изменять основные параметры системы: подключать устройства UGREEN　NAS к сети для доступа, \nуправлять пользователями и их правами, настраивать безопасность и т. д."
+  },
+  "UGOS PRO Desktop": {
+   "name": "Рабочий стол UGOS PRO",
+   "description_en": "UGOS PRO Desktop, your gateway to NAS software!",
+   "description": "Рабочий стол UGOS PRO — ваш вход в мир приложений NAS!"
+  },
+  "Files": {
+   "name": "Файлы",
+   "description_en": "Through Files, you can not only efficiently manage all the files stored in the device, but also easily share files with friends, or let friends upload files to your device. The whole process does not require your friends to register any account. In addition, Filesr also provides functions such as folder permission setting and remote server access.",
+   "description": "В приложении «Файлы» можно не только эффективно управлять всеми файлами, хранящимися на устройстве, но и легко делиться ими с друзьями или позволять друзьям загружать файлы на ваше устройство — без регистрации аккаунта. Кроме того, «Файлы» предоставляют настройку прав доступа к папкам и доступ к удалённым серверам."
+  },
+  "Universal Search": {
+   "name": "Универсальный поиск",
+   "description_en": "You can quickly invoke it in the upper right corner of the desktop for a quick search, or you can invoke the search in the desktop icon to find the information you want through rich filter and search functions.",
+   "description": "Поиск можно быстро вызвать в правом верхнем углу рабочего стола или через значок на рабочем столе и найти нужную информацию с помощью удобных фильтров и расширенных возможностей поиска."
+  },
+  "Support": {
+   "name": "Поддержка",
+   "description_en": "Support summarizes various informative articles. You can select \"App Guide\" to learn how to use each app, or you can select the \"Knowledge Center\" to learn more about real-world examples, problem troubleshooting, etc. If you encounter issues during use, you can seek help from technical engineers by clicking \"Contact us\".",
+   "description": "В «Поддержке» собраны информационные статьи. Выберите «Руководство по приложениям», чтобы узнать, как пользоваться каждым приложением, или «Центр знаний», чтобы изучить реальные примеры, способы устранения неполадок и многое другое. Если при работе возникли проблемы, нажмите «Связаться с нами», чтобы получить помощь технических специалистов."
+  },
+  "Job Manager": {
+   "name": "Диспетчер заданий",
+   "description_en": "Job Manager",
+   "description": "Диспетчер заданий"
+  },
+  "Logs": {
+   "name": "Журналы",
+   "description_en": "Logs records all kinds of events on the NAS system, including operation events and system exceptions of important apps such as the control panel and files. Logs also provides archiving and automatic notification functions. If you have any operation and maintenance needs, you can easily view and analyze the running status of the NAS system with this app.",
+   "description": "«Журналы» фиксируют все события в системе NAS, включая операции и системные сбои важных приложений, таких как «Панель управления» и «Файлы». Также доступны архивирование и автоматические уведомления. Если вам нужно обслуживание и контроль, с помощью этого приложения можно легко просматривать и анализировать состояние работы NAS."
+  },
+  "NAS Agent": {
+   "name": "NAS-агент",
+   "description_en": "NAS Agent Service",
+   "description": "Служба NAS-агента"
+  },
+  "Storage": {
+   "name": "Хранилище",
+   "description_en": "Storage is a management app that helps administrators organize, manage, and monitor storage capacity on UGREEN NAS. Storage also provides advanced options such as Hot Spare and SSD cache, to improve storage reliability and read-write speed.",
+   "description": "«Хранилище» — приложение, помогающее администраторам организовывать, настраивать и отслеживать ёмкость хранилища UGREEN NAS. Оно также предоставляет расширенные возможности, такие как «горячий» резерв и SSD-кэш, для повышения надёжности и скорости чтения и записи."
+  },
+  "Task Manager": {
+   "name": "Диспетчер задач",
+   "description_en": "You can view and track the resource usage of each service or process in Task Manager, and also view the overall resource usage trend chart of the system.",
+   "description": "В «Диспетчере задач» можно просматривать и отслеживать использование ресурсов каждой службой или процессом, а также общий график загрузки ресурсов системы."
+  },
+  "Model Manager": {
+   "name": "Менеджер моделей",
+   "description_en": "Model Manager handles local AI models in UGOS Pro, supporting downloading, managing, and scheduling AI models within the system",
+   "description": "Менеджер моделей управляет локальными ИИ-моделями в UGOS Pro: поддерживает загрузку, управление и планирование ИИ-моделей в системе."
+  },
+  "Contacts": {
+   "name": "Контакты",
+   "description_en": "No more fear of losing contacts. Secure backup, one-tap calling, cross-device viewing and restoration — manage your contacts freely",
+   "description": "Больше не нужно бояться потерять контакты. Надёжное резервное копирование, вызов одним касанием, просмотр и восстановление на разных устройствах — управляйте контактами свободно."
+  },
+  "Docker": {
+   "name": "Docker",
+   "description_en": "Docker is a lightweight virtualization app. You can easily install, run and manage various container apps through Docker, which makes it easy to build personal Web server, database, media server and other apps.",
+   "description": "Docker — лёгкое приложение для виртуализации. С его помощью можно просто устанавливать, запускать и администрировать различные контейнерные приложения, что упрощает создание личного веб-сервера, базы данных, медиасервера и других приложений."
+  },
+  "TextEdit": {
+   "name": "Текстовый редактор",
+   "description_en": "TextEdit is a tool for editing plain text content, supporting switch of multiple encoding formats and selection of appearance styles. If you need to view special texts such as html and xml, the TextEdit also supports rich programming languages and corresponding syntax highlighting to improve readability.",
+   "description": "«Текстовый редактор» — инструмент для правки простого текста: поддерживает переключение между несколькими кодировками и выбор стиля оформления. Для просмотра специальных текстов, таких как html и xml, он также поддерживает множество языков программирования и подсветку синтаксиса для лучшей читаемости."
+  },
+  "Virtual Machine": {
+   "name": "Виртуальная машина",
+   "description_en": "Virtual Machine (VM) can create and manage virtualization environments. You can easily set and run VMs via this app, such as Linux, Windows and other operating systems. In addition, VMs can flexibly allocate hardware resources so you can run multiple VMs on a single physical server to meet the needs of different applications and workloads.",
+   "description": "Виртуальная машина (ВМ) позволяет создавать виртуальные среды и управлять ими. Через это приложение можно легко настраивать и запускать ВМ с Linux, Windows и другими операционными системами. Кроме того, ВМ гибко распределяют аппаратные ресурсы, так что на одном физическом сервере можно запускать несколько ВМ для разных приложений и нагрузок."
+  },
+  "Music": {
+   "name": "Музыка",
+   "description_en": "A dedicated app for local music playback and management. It automatically scans and organizes your library, lets you browse by song, album, artist, or genre, and offers lyrics, playlists, favorites, and seamless sync across all your devices. Your personal music library is always within reach.",
+   "description": "Специальное приложение для воспроизведения и управления локальной музыкой. Оно автоматически сканирует и упорядочивает вашу медиатеку, позволяет просматривать её по песням, альбомам, исполнителям и жанрам, предлагает тексты песен, плейлисты, избранное и бесшовную синхронизацию между всеми устройствами. Ваша личная музыкальная коллекция всегда под рукой."
+  },
+  "Online Office": {
+   "name": "Онлайн-офис",
+   "description_en": "Online Office is a collaborative office app that allows multiple people to edit, collaborate, and share documents online. User data is stored on the local NAS device so it's more secure and reliable than traditional cloud documents. Online office also provides features such as document sharing, permission control, encryption, online comments and annotations, and format conversion.",
+   "description": "Онлайн-офис — приложение для совместной работы, в котором несколько человек могут редактировать документы, сотрудничать и делиться ими онлайн. Данные пользователей хранятся на локальном устройстве NAS, поэтому это безопаснее и надёжнее традиционных облачных документов. Онлайн-офис также предоставляет общий доступ к документам, управление правами, шифрование, комментарии и аннотации онлайн, а также преобразование форматов."
+  },
+  "Sync & Backup": {
+   "name": "Синхронизация и резервное копирование",
+   "description_en": "Sync function supports syncing data between the UGREEN NAS and PC/remote UGREEN NAS/file server to ensure data sync between different devices. \nBackup can help you protect your data from accidental loss. The backup target can be the local UGREEN NAS/file server/PC/mobile phone, and backup tasks can be set according to user needs.",
+   "description": "Функция синхронизации позволяет синхронизировать данные между UGREEN NAS и ПК/удалённым UGREEN NAS/файловым сервером, чтобы данные на разных устройствах были одинаковыми. \nРезервное копирование защищает данные от случайной потери. Целью копирования могут быть локальный UGREEN NAS, файловый сервер, ПК или мобильный телефон; задачи резервного копирования настраиваются по вашим потребностям."
+  },
+  "File Version Explorer": {
+   "name": "Обозреватель версий файлов",
+   "description_en": "File Version Explorer is used to record and manage the version history of all files on the NAS. Every change is traceable, eliminating version chaos and improving file management and collaboration efficiency.",
+   "description": "«Обозреватель версий файлов» записывает историю версий всех файлов на NAS и позволяет управлять ею. Каждое изменение можно отследить: исчезает путаница с версиями, а управление файлами и совместная работа становятся эффективнее."
+  }
+ },
+ "tags": {
+  "System Management": "Управление системой",
+  "Utility": "Утилиты",
+  "Media & Entertainment": "Медиа и развлечения"
+ }
+}
