@@ -53,6 +53,11 @@ if [ "$MODE" = install ]; then
         done < "$TMP/MANIFEST"
         curl -fsSL "$RAW/ru/apps-i18n.json?t=$(date +%s)" -o "$TMP/ru/apps-i18n.json" \
             || echo "Не удалось скачать apps-i18n.json (названия приложений на рабочем столе останутся английскими)"
+        mkdir -p "$TMP/ru/csv"
+        for c in ugreen.csv; do
+            curl -fsSL "$RAW/ru/csv/$c.json?t=$(date +%s)" -o "$TMP/ru/csv/$c.json" \
+                || echo "Не удалось скачать csv/$c.json (системные сообщения останутся на прежнем языке)"
+        done
         SRC="$TMP/ru"
     fi
     [ -d "$SRC" ] || { echo "Нет каталога переводов: $SRC"; exit 1; }
@@ -71,6 +76,39 @@ INI = os.path.join(LANGDIR, ".language.ini")
 INI_SIDE = os.path.join(state_dir, "slot-ini.txt")        # исходное название слота в .language.ini
 I18N_SIDE = os.path.join(state_dir, "slot-i18n.json")     # исходные записи i18n слота
 NAME = "Русский"
+
+def csv_edit(install):
+    """Словари сообщений /ugreen/language/*.csv: колонку ko-KR заполняем русским, оригинал храним в state_dir."""
+    import csv, io
+    n = 0
+    cdir = os.path.join(src, "csv") if install else None
+    names = sorted(f[:-5] for f in os.listdir(cdir) if f.endswith(".csv.json")) if install and os.path.isdir(cdir) else \
+            sorted(f[4:-5] for f in os.listdir(state_dir) if f.startswith("csv-") and f.endswith(".orig")) if not install else []
+    for name in names:
+        path = os.path.join(LANGDIR, name)
+        side = os.path.join(state_dir, "csv-%s.orig" % name)
+        if not install:
+            if os.path.exists(side) and os.path.exists(path):
+                open(path, "wb").write(open(side, "rb").read()); n += 1
+            if os.path.exists(side): os.remove(side)
+            continue
+        if not os.path.exists(path): continue
+        tr = json.load(open(os.path.join(cdir, name + ".json"), encoding="utf-8"))
+        raw = open(path, "rb").read()
+        txt = raw.decode("utf-8")
+        rows = list(csv.reader(io.StringIO(txt, newline="")))
+        if not rows or SLOT not in rows[0]: continue
+        ci = rows[0].index(SLOT)
+        ours = any(len(r) > ci and r[0] in tr and r[ci] == tr[r[0]] for r in rows[1:])
+        if not ours or not os.path.exists(side):
+            open(side, "wb").write(raw)                      # новый оригинал (первый запуск или после обновления)
+        for r in rows[1:]:
+            if len(r) > ci and r[0] in tr: r[ci] = tr[r[0]]
+        out = io.StringIO()
+        csv.writer(out, lineterminator="\r\n" if "\r\n" in txt else "\n").writerows(rows)
+        if out.getvalue() != txt:
+            open(path, "w", encoding="utf-8", newline="").write(out.getvalue()); n += 1
+    return n
 
 def write_gz(path, data):
     with gzip.GzipFile(path + ".gz", "wb", mtime=0) as g:
@@ -268,6 +306,7 @@ if mode == "install":
         print("названия приложений: записей изменено: %d" % n)
     else:
         print("названия приложений: нет apps-i18n.json, пропуск")
+    print("словари сообщений (csv): изменено файлов: %d" % csv_edit(True))
     # 4. манифест
     with open(manifest, "w", encoding="utf-8") as mf:
         mf.write("\n".join("%s|%s" % (k, p) for p, k in sorted(new_kinds.items())) + "\n")
@@ -315,6 +354,7 @@ else:
             open(c, "w", encoding="utf-8").write(t[:a] + dump_i18n(arr) + t[b:]); n += 1
         os.remove(I18N_SIDE)
         print("названия приложений: возвращено у %d" % n)
+    print("словари сообщений (csv): возвращено файлов: %d" % csv_edit(False))
     # 4. следы прошлых версий
     legacy_cleanup()
     if os.path.exists(manifest): os.remove(manifest)
