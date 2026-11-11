@@ -153,10 +153,13 @@ else:
             os.remove(o); n += 1
             print("откат framework:", f)
     if os.path.exists(manifest):
+        # Вместо удаления оставляем пустые заглушки ru-RU.json: если в браузере остался
+        # запомненный язык ru-RU, окна приложений покажут английский, а не белый экран
+        # (без файла запрос ru-RU.json даёт 404, и дочерние окна не открываются).
         for p in open(manifest).read().split():
-            for q in (p, p + ".gz"):
-                if os.path.exists(q): os.remove(q)
-            print("удалён перевод:", p)
+            if os.path.exists(p):
+                open(p, "wb").write(b"{}"); write_gz(p, b"{}")
+                print("перевод убран (оставлена пустая заглушка):", p)
         os.remove(manifest)
     print("Откат завершён, восстановлено framework: %d" % n)
 PY
