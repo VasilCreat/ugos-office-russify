@@ -122,6 +122,11 @@ def undo(path, pairs, label):
     else:
         print(f"  {label}: наших правок нет")
 
+# Выражение «язык из адреса страницы, иначе русский» (его ставит установка)
+LANG_DYN = '(function(){var l=new URLSearchParams(window.location.search).get("lang");return l&&l!=="en-US"?l:"ru-RU"})()'
+API_DYN = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();'
+PARENT_DYN = '"ugos:locale-sync-parent",{detail:{locale:(e.locale&&"en-US"!==e.locale?e.locale:"ru-RU")}}'
+
 # 1. редактор таблиц: app.js и ie/app.js
 sse = ds + "/spreadsheeteditor/main/"
 sse_pairs = [
@@ -131,6 +136,10 @@ sse_pairs = [
      'this.appOptions={},this.appOptions.lang=t.config.lang}'),
     ('this.appOptions.lang="ru-RU",this.appOptions.location=',
      'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
+    ('this.appOptions={},this.appOptions.lang=' + LANG_DYN + '}',
+     'this.appOptions={},this.appOptions.lang=t.config.lang}'),
+    ('this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location=',
+     'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
 ]
 for sub in ("app.js", "ie/app.js"):
     undo(sse + sub, sse_pairs, "редактор таблиц " + sub)
@@ -138,7 +147,7 @@ for sub in ("app.js", "ie/app.js"):
 # 2. api.js
 api_orig = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
 undo(ds + "/api/documents/api.js",
-     [('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
+     [(API_DYN, api_orig), ('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
      "api.js")
 
 # 3. ugos-framework: два патча. «Сообщение родительскому окну» откатывается
@@ -149,9 +158,10 @@ PARENT_OLD = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}'
 
 def fw_clean(data):
     n = 0
-    if PARENT_NEW in data:
-        data = data.replace(PARENT_NEW, PARENT_OLD)
-        n += 1
+    for pn in (PARENT_DYN, PARENT_NEW):
+        if pn in data:
+            data = data.replace(pn, PARENT_OLD)
+            n += 1
     for var in ("xn", "et", "nt", "tt", "lt", "rt"):
         new, old = f'{var}="ru-RU"', f'{var}="en-US"'
         if data.count(new) == 1 and data.count(old) == 0:
@@ -165,7 +175,7 @@ for f in fws:
     label = "ugos-framework " + os.path.basename(f)
     bak = f + ".bak"
     b = rd(bak) if os.path.exists(bak) else ""
-    if PARENT_OLD in b and PARENT_NEW not in b:
+    if PARENT_OLD in b and PARENT_NEW not in b and PARENT_DYN not in b:
         wr(f, b)                       # есть чистая копия — берём её целиком
         regz(f)
         print(f"  {label}: восстановлен из .bak")
@@ -473,12 +483,13 @@ else:
             print("  ВНИМАНИЕ: fallback-переменная не найдена (возможно, изменилась структура кода)")
 
     old2 = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}'
-    new2 = '"ugos:locale-sync-parent",{detail:{locale:"ru-RU"}}'
-    if old2 in data:
-        data = data.replace(old2, new2, 1)
-        print("  Патч 2 (ready): locale:e.locale -> locale:\"ru-RU\"")
-    elif new2 in data:
+    forced2 = '"ugos:locale-sync-parent",{detail:{locale:"ru-RU"}}'
+    new2 = '"ugos:locale-sync-parent",{detail:{locale:(e.locale&&"en-US"!==e.locale?e.locale:"ru-RU")}}'
+    if new2 in data:
         print("  Патч 2: уже применён ранее — пропускаем")
+    elif old2 in data or forced2 in data:
+        data = data.replace(old2, new2, 1) if old2 in data else data.replace(forced2, new2, 1)
+        print("  Патч 2 (ready): язык берётся у системы (английский -> русский)")
     else:
         print("  ВНИМАНИЕ: ready() паттерн не найден, пропускаем")
 
@@ -527,7 +538,9 @@ api_path = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-a
 with open(api_path) as f:
     data = f.read()
 
-target = 'params += "&lang=ru-RU";'
+# язык берётся из адреса страницы (его передаёт система); если это английский или пусто — русский
+target = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();'
+old_forced_ru = 'params += "&lang=ru-RU";'
 
 old_original = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
 old_short_ru = 'params += "&lang=ru";'
@@ -538,17 +551,22 @@ if old_original in data or not os.path.exists(api_path + '.bak'):
     shutil.copy2(api_path, api_path + '.bak')
 
 if target in data:
-    print("  Уже пропатчено (lang=ru-RU) — пропускаем")
+    print("  Уже пропатчено (язык из системы) — пропускаем")
+elif old_forced_ru in data:
+    data = data.replace(old_forced_ru, target)
+    with open(api_path, 'w') as f:
+        f.write(data)
+    print("  Обновлено: жёсткий lang=ru-RU -> язык системы")
 elif old_short_ru in data:
     data = data.replace(old_short_ru, target)
     with open(api_path, 'w') as f:
         f.write(data)
-    print("  Обновлено: lang=ru -> lang=ru-RU")
+    print("  Обновлено: lang=ru -> язык системы")
 elif old_original in data:
     data = data.replace(old_original, target)
     with open(api_path, 'w') as f:
         f.write(data)
-    print("  api.js пропатчен: lang=ru-RU")
+    print("  api.js пропатчен: язык берётся у системы")
 else:
     print("  ВНИМАНИЕ: ни один из ожидаемых паттернов не найден.")
     print("  Возможно, структура api.js изменилась после обновления OnlyOffice.")
@@ -571,6 +589,7 @@ echo "[6/8] Патч редактора таблиц (регион, язык ф�
 python3 - << 'PYEOF'
 import gzip, os, shutil
 
+LANG_DYN = '(function(){var l=new URLSearchParams(window.location.search).get("lang");return l&&l!=="en-US"?l:"ru-RU"})()'
 base = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/spreadsheeteditor/main/"
 targets = [base + "app.js", base + "ie/app.js"]
 
@@ -581,12 +600,17 @@ PATCHES = [
      'this.appOptions.region="ru-ru"'),
     ("язык формул по умолчанию",
      'this.appOptions={},this.appOptions.lang=t.config.lang}',
-     'this.appOptions={},this.appOptions.lang="ru-RU"}'),
+     'this.appOptions={},this.appOptions.lang=' + LANG_DYN + '}'),
     # appOptions.lang (он же mode.lang) использует диалог настроек и панель
     # проверки орфографии, чтобы выбрать язык словаря по умолчанию
     ("язык словаря по умолчанию",
      'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location=',
-     'this.appOptions.lang="ru-RU",this.appOptions.location='),
+     'this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location='),
+]
+# старые жёсткие патчи (lang="ru-RU") переводим на язык системы
+LEGACY = [
+    ('this.appOptions={},this.appOptions.lang="ru-RU"}', 'this.appOptions={},this.appOptions.lang=' + LANG_DYN + '}'),
+    ('this.appOptions.lang="ru-RU",this.appOptions.location=', 'this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location='),
 ]
 
 for path in targets:
@@ -599,6 +623,11 @@ for path in targets:
 
     new_data = data
     changed = False
+    for lo, ln in LEGACY:
+        if lo in new_data:
+            new_data = new_data.replace(lo, ln)
+            changed = True
+            print(f"  {short}: язык редактора теперь берётся у системы")
     for name, old, new in PATCHES:
         if new in new_data and old not in new_data:
             print(f"  {short}: {name} — уже применено, пропускаем")
@@ -615,7 +644,7 @@ for path in targets:
         # Бэкап оригинала (.ruorig): обновляем его, только если файл чистый
         # (свежий после обновления OnlyOffice). Если наши патчи в файле уже
         # есть, старый бэкап с настоящим оригиналом не трогаем.
-        was_patched = any(new in data for _, _, new in PATCHES)
+        was_patched = any(new in data for _, _, new in PATCHES) or any(lo in data for lo, _ in LEGACY)
         if not was_patched or not os.path.exists(path + ".ruorig"):
             shutil.copy2(path, path + ".ruorig")
         with open(path, "w", encoding="utf-8") as f:
