@@ -727,6 +727,8 @@ echo '    2. rm -rf "$HOME/Library/UGREEN_Nas_Pro/.cache/office/"'
 echo '    3. rm -rf "$HOME/Library/Application Support/com.ugreen.desktop/Cache/Cache_Data/"'
 echo '    4. Открыть приложение'
 echo ""
+echo "Проект в разработке, гарантий стабильной работы нет. Если что-то сломалось: sudo bash install.sh --revert"
+echo ""
 echo "Проверка: создай НОВУЮ таблицу, Файл -> Параметры -> Региональные"
 echo "параметры (там должны быть русский язык формул и регион), затем"
 echo "введи =СУММ( — должно появиться автодополнение на русском."

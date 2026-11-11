@@ -145,3 +145,4 @@ UNITEOF
 fi
 echo; echo "=== Готово. Обнови страницу в браузере (Ctrl+F5) ==="
 echo "Убрать автозапуск: sudo bash $INSTALL_DIR/russify.sh --remove-autorun   Откат: sudo bash $INSTALL_DIR/russify.sh --revert"
+echo; echo "Проект в разработке, гарантий стабильной работы нет. Если что-то сломалось: sudo bash $INSTALL_DIR/russify.sh --revert"
