@@ -127,6 +127,9 @@ LANG_DYN = '(function(){var l=new URLSearchParams(window.location.search).get("l
 API_DYN = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();'
 PARENT_DYN = '"ugos:locale-sync-parent",{detail:{locale:(e.locale&&"en-US"!==e.locale?e.locale:"ru-RU")}}'
 
+LANG_STRICT = '(new URLSearchParams(window.location.search).get("lang")||"en-US")'
+API_STRICT = 'params += "&lang=" + (new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US");'
+
 # 1. редактор таблиц: app.js и ie/app.js
 sse = ds + "/spreadsheeteditor/main/"
 sse_pairs = [
@@ -140,6 +143,10 @@ sse_pairs = [
      'this.appOptions={},this.appOptions.lang=t.config.lang}'),
     ('this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location=',
      'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
+    ('this.appOptions={},this.appOptions.lang=' + LANG_STRICT + '}',
+     'this.appOptions={},this.appOptions.lang=t.config.lang}'),
+    ('this.appOptions.lang=' + LANG_STRICT + ',this.appOptions.location=',
+     'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
 ]
 for sub in ("app.js", "ie/app.js"):
     undo(sse + sub, sse_pairs, "редактор таблиц " + sub)
@@ -147,7 +154,7 @@ for sub in ("app.js", "ie/app.js"):
 # 2. api.js
 api_orig = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
 undo(ds + "/api/documents/api.js",
-     [(API_DYN, api_orig), ('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
+     [(API_STRICT, api_orig), (API_DYN, api_orig), ('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
      "api.js")
 
 # 3. ugos-framework: два патча. «Сообщение родительскому окну» откатывается
@@ -436,77 +443,49 @@ for n in en-US.json en-US.json.gz; do
 done
 echo "  Готово"
 
-# --- Шаг 3: Патч ugos-framework (fallback-язык интерфейса) ---
-echo "[3/8] Патч ugos-framework..."
+# --- Шаг 3: ugos-framework Office: убрать наши старые правки (язык теперь решает система) ---
+# Раньше здесь ставились жёсткие подмены языка на ru-RU. Теперь Office берёт язык у
+# системы, поэтому старые правки (если они остались от прошлых версий) возвращаем в оригинал.
+echo "[3/8] ugos-framework: возвращаем оригинал (язык решает система)..."
 python3 - << 'PYEOF'
-import glob, shutil, gzip, os
+import glob, gzip, os
 
 app_dir = "/volume1/@appstore/com.ugreen.office/www/assets"
+PARENT_OLD = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}'
+PARENT_BAD = ['"ugos:locale-sync-parent",{detail:{locale:"ru-RU"}}',
+              '"ugos:locale-sync-parent",{detail:{locale:(e.locale&&"en-US"!==e.locale?e.locale:"ru-RU")}}']
 
-# файл может называться по-разному в зависимости от сборки (хэш меняется
-# при каждом обновлении), и может быть как обычным .js, так и .js.gz
-candidates = glob.glob(f"{app_dir}/ugos-framework-*.js") + glob.glob(f"{app_dir}/ugos-framework-*.js.gz")
-candidates = [f for f in candidates if not f.endswith(('.bak', '.bak.gz'))]
-
-if not candidates:
-    print("  ОШИБКА: ugos-framework не найден!")
-else:
-    fw_path = candidates[0]
-    is_gz = fw_path.endswith(".gz")
-    print(f"  Файл: {fw_path}")
-
-    if is_gz:
-        data = gzip.open(fw_path).read().decode()
-    else:
-        with open(fw_path, encoding="utf-8") as f:
-            data = f.read()
-
-    # Резервная копия: только пока файл «чистый» (в нём ещё есть исходный
-    # шаблон) или копии ещё нет. Иначе повторный запуск затёр бы оригинал
-    # уже пропатченным файлом, и откатиться было бы нельзя.
-    pristine = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}' in data
-    if pristine or not os.path.exists(fw_path + '.bak'):
-        shutil.copy2(fw_path, fw_path + '.bak')
-
-    patched_any = False
-    for var in ['xn', 'et', 'nt', 'tt', 'lt', 'rt']:
-        old = f'{var}="en-US"'
-        if data.count(old) == 1:
-            data = data.replace(old, f'{var}="ru-RU"', 1)
-            print(f"  Патч 1 (fallback): {old} -> {var}=\"ru-RU\"")
-            patched_any = True
+def clean(data):
+    n = 0
+    for bad in PARENT_BAD:
+        if bad in data:
+            data = data.replace(bad, PARENT_OLD); n += 1
+    for var in ("xn", "et", "nt", "tt", "lt", "rt"):
+        new, old = f'{var}="ru-RU"', f'{var}="en-US"'
+        if data.count(new) == 1 and data.count(old) == 0:
+            data = data.replace(new, old); n += 1
             break
-    if not patched_any:
-        if '="ru-RU"' in data:
-            print("  Патч 1: похоже, уже применён ранее — пропускаем")
-        else:
-            print("  ВНИМАНИЕ: fallback-переменная не найдена (возможно, изменилась структура кода)")
+    return data, n
 
-    old2 = '"ugos:locale-sync-parent",{detail:{locale:e.locale}}'
-    forced2 = '"ugos:locale-sync-parent",{detail:{locale:"ru-RU"}}'
-    new2 = '"ugos:locale-sync-parent",{detail:{locale:(e.locale&&"en-US"!==e.locale?e.locale:"ru-RU")}}'
-    if new2 in data:
-        print("  Патч 2: уже применён ранее — пропускаем")
-    elif old2 in data or forced2 in data:
-        data = data.replace(old2, new2, 1) if old2 in data else data.replace(forced2, new2, 1)
-        print("  Патч 2 (ready): язык берётся у системы (английский -> русский)")
+done = False
+for f in glob.glob(app_dir + "/ugos-framework-*.js*"):
+    if f.endswith((".bak", ".bak.gz", ".br", ".br.stale")):
+        continue
+    gz = f.endswith(".gz")
+    data = gzip.open(f).read().decode() if gz else open(f, encoding="utf-8").read()
+    new, n = clean(data)
+    done = True
+    if not n:
+        print("  " + os.path.basename(f) + ": чисто, правок нет"); continue
+    if gz:
+        with gzip.open(f, "wb") as g: g.write(new.encode())
     else:
-        print("  ВНИМАНИЕ: ready() паттерн не найден, пропускаем")
-
-    if is_gz:
-        with gzip.open(fw_path, 'wb') as f:
-            f.write(data.encode())
-    else:
-        with open(fw_path, 'w', encoding="utf-8") as f:
-            f.write(data)
-        # если рядом лежит .gz-версия того же файла — обновим и её тоже
-        gz_sibling = fw_path + ".gz"
-        import os
-        if os.path.exists(gz_sibling):
-            with gzip.open(gz_sibling, 'wb') as f:
-                f.write(data.encode())
-
-    print("  ugos-framework пропатчен")
+        open(f, "w", encoding="utf-8").write(new)
+        if os.path.exists(f + ".gz"):
+            with gzip.open(f + ".gz", "wb") as g: g.write(new.encode())
+    print("  " + os.path.basename(f) + ": возвращено в оригинал, правок: %d" % n)
+if not done:
+    print("  ВНИМАНИЕ: ugos-framework не найден")
 PYEOF
 
 # --- Шаг 4: Добавляем ru-RU в config.json Office ---
@@ -525,138 +504,88 @@ else:
     print("  ru-RU уже в списке")
 PYEOF
 
-# --- Шаг 5: Патч api.js — язык интерфейса И региональный формат редактора ---
-# ВАЖНО: используем полный код ru-RU (не короткий "ru"), иначе OnlyOffice
-# не сможет вывести из него региональный формат (даты/числа/язык формул)
-# и молча откатится на en-US — это и была основная причина проблемы.
-echo "[5/8] Патч api.js (язык + региональный формат редактора)..."
-python3 - << 'PYEOF'
-import gzip, shutil, os
-
-api_path = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/api/documents/api.js"
-
-with open(api_path) as f:
-    data = f.read()
-
-# язык берётся из адреса страницы (его передаёт система); если это английский или пусто — русский
-target = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();'
-old_forced_ru = 'params += "&lang=ru-RU";'
-
-old_original = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
-old_short_ru = 'params += "&lang=ru";'
-
-# Резервная копия: только пока файл «чистый» или копии ещё нет (повторный
-# запуск не должен затирать оригинал уже пропатченным файлом).
-if old_original in data or not os.path.exists(api_path + '.bak'):
-    shutil.copy2(api_path, api_path + '.bak')
-
-if target in data:
-    print("  Уже пропатчено (язык из системы) — пропускаем")
-elif old_forced_ru in data:
-    data = data.replace(old_forced_ru, target)
-    with open(api_path, 'w') as f:
-        f.write(data)
-    print("  Обновлено: жёсткий lang=ru-RU -> язык системы")
-elif old_short_ru in data:
-    data = data.replace(old_short_ru, target)
-    with open(api_path, 'w') as f:
-        f.write(data)
-    print("  Обновлено: lang=ru -> язык системы")
-elif old_original in data:
-    data = data.replace(old_original, target)
-    with open(api_path, 'w') as f:
-        f.write(data)
-    print("  api.js пропатчен: язык берётся у системы")
-else:
-    print("  ВНИМАНИЕ: ни один из ожидаемых паттернов не найден.")
-    print("  Возможно, структура api.js изменилась после обновления OnlyOffice.")
-    print("  Патч НЕ применён — нужна ручная проверка файла:")
-    print(f"  {api_path}")
-
-with open(api_path, 'rb') as fin:
-    with gzip.open(api_path + '.gz', 'wb') as fout:
-        fout.write(fin.read())
-PYEOF
-
-# --- Шаг 6: Патч редактора таблиц — регион и язык формул по умолчанию ---
-# Редактор берёт регион из editorConfig.region, а если его нет — из
-# editorConfig.lang, который присылает сервер (office_serv) и который у UGOS
-# английский. Поэтому одного lang=ru-RU в адресе мало: интерфейс станет
-# русским, а регион и язык формул останутся en. Здесь задаём им значения
-# по умолчанию. Если пользователь сам выбрал регион/язык формул в настройках
-# редактора, его выбор сохраняется (он хранится в браузере и имеет приоритет).
-echo "[6/8] Патч редактора таблиц (регион, язык формул и словаря по умолчанию)..."
+# --- Шаг 5: api.js — язык редактора берётся из адреса страницы (его передаёт система) ---
+# Сервер (office_serv) всегда присылает editorConfig.lang = en-US, поэтому без правки
+# редактор не следует за языком системы. Язык берётся из ?lang= адреса страницы,
+# иначе из editorConfig.lang. Никаких подмен на русский: что выбрано в системе, то и в Office.
+echo "[5/8] Патч api.js (язык редактора = язык системы)..."
 python3 - << 'PYEOF'
 import gzip, os, shutil
 
-LANG_DYN = '(function(){var l=new URLSearchParams(window.location.search).get("lang");return l&&l!=="en-US"?l:"ru-RU"})()'
+api_path = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/api/documents/api.js"
+orig = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
+target = 'params += "&lang=" + (new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US");'
+old_variants = [
+    'params += "&lang=ru-RU";', 'params += "&lang=ru";',
+    'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();',
+]
+data = open(api_path, encoding="utf-8").read()
+if orig in data or not os.path.exists(api_path + ".bak"):
+    shutil.copy2(api_path, api_path + ".bak")
+if target in data:
+    print("  Уже пропатчено — пропускаем")
+else:
+    for v in [orig] + old_variants:
+        if v in data:
+            data = data.replace(v, target)
+            open(api_path, "w", encoding="utf-8").write(data)
+            print("  api.js пропатчен: язык берётся у системы")
+            break
+    else:
+        print("  ВНИМАНИЕ: ожидаемые шаблоны не найдены (структура api.js изменилась?)")
+with open(api_path, "rb") as fin, gzip.open(api_path + ".gz", "wb") as fout:
+    fout.write(fin.read())
+PYEOF
+
+# --- Шаг 6: редактор таблиц — язык формул и словаря = язык системы; регион не трогаем ---
+# Раньше здесь жёстко ставился регион ru-ru и язык ru-RU. Теперь регион возвращается
+# к оригиналу (его выводит сам редактор из языка), а язык берётся из адреса.
+echo "[6/8] Патч редактора таблиц (язык = язык системы)..."
+python3 - << 'PYEOF'
+import gzip, os, shutil
+
 base = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/spreadsheeteditor/main/"
-targets = [base + "app.js", base + "ie/app.js"]
-
-# (описание, что ищем, на что меняем)
-PATCHES = [
-    ("регион по умолчанию",
+LS = '(new URLSearchParams(window.location.search).get("lang")||"en-US")'
+LDYN = '(function(){var l=new URLSearchParams(window.location.search).get("lang");return l&&l!=="en-US"?l:"ru-RU"})()'
+# (название, оригинал, цель, прежние наши варианты)
+SLOTS = [
+    ("регион (оригинал)",
      'this.appOptions.region="string"==typeof this.editorConfig.region?this.editorConfig.region.toLowerCase():this.editorConfig.region',
-     'this.appOptions.region="ru-ru"'),
-    ("язык формул по умолчанию",
+     'this.appOptions.region="string"==typeof this.editorConfig.region?this.editorConfig.region.toLowerCase():this.editorConfig.region',
+     ['this.appOptions.region="ru-ru"']),
+    ("язык формул",
      'this.appOptions={},this.appOptions.lang=t.config.lang}',
-     'this.appOptions={},this.appOptions.lang=' + LANG_DYN + '}'),
-    # appOptions.lang (он же mode.lang) использует диалог настроек и панель
-    # проверки орфографии, чтобы выбрать язык словаря по умолчанию
-    ("язык словаря по умолчанию",
+     'this.appOptions={},this.appOptions.lang=' + LS + '}',
+     ['this.appOptions={},this.appOptions.lang="ru-RU"}', 'this.appOptions={},this.appOptions.lang=' + LDYN + '}']),
+    ("язык словаря",
      'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location=',
-     'this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location='),
+     'this.appOptions.lang=' + LS + ',this.appOptions.location=',
+     ['this.appOptions.lang="ru-RU",this.appOptions.location=', 'this.appOptions.lang=' + LDYN + ',this.appOptions.location=']),
 ]
-# старые жёсткие патчи (lang="ru-RU") переводим на язык системы
-LEGACY = [
-    ('this.appOptions={},this.appOptions.lang="ru-RU"}', 'this.appOptions={},this.appOptions.lang=' + LANG_DYN + '}'),
-    ('this.appOptions.lang="ru-RU",this.appOptions.location=', 'this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location='),
-]
-
-for path in targets:
+for path in (base + "app.js", base + "ie/app.js"):
     short = os.path.relpath(path, base)
     if not os.path.exists(path):
-        print(f"  {short}: файл не найден — пропускаем")
-        continue
-    with open(path, encoding="utf-8") as f:
-        data = f.read()
-
-    new_data = data
-    changed = False
-    for lo, ln in LEGACY:
-        if lo in new_data:
-            new_data = new_data.replace(lo, ln)
-            changed = True
-            print(f"  {short}: язык редактора теперь берётся у системы")
-    for name, old, new in PATCHES:
-        if new in new_data and old not in new_data:
-            print(f"  {short}: {name} — уже применено, пропускаем")
-        elif old in new_data:
-            cnt = new_data.count(old)
-            new_data = new_data.replace(old, new)
-            changed = True
-            print(f"  {short}: {name} — патч применён (замен: {cnt})")
+        print(f"  {short}: файл не найден — пропускаем"); continue
+    data = open(path, encoding="utf-8").read(); new = data; changes = []
+    for name, orig, target, olds in SLOTS:
+        if target in new and (orig == target or orig not in new):
+            continue
+        for v in [orig] + olds:
+            if v != target and v in new:
+                new = new.replace(v, target); changes.append(name); break
         else:
-            print(f"  {short}: ВНИМАНИЕ: {name} — шаблон не найден, патч НЕ применён")
-            print("    (структура app.js могла измениться после обновления OnlyOffice)")
-
-    if changed:
-        # Бэкап оригинала (.ruorig): обновляем его, только если файл чистый
-        # (свежий после обновления OnlyOffice). Если наши патчи в файле уже
-        # есть, старый бэкап с настоящим оригиналом не трогаем.
-        was_patched = any(new in data for _, _, new in PATCHES) or any(lo in data for lo, _ in LEGACY)
-        if not was_patched or not os.path.exists(path + ".ruorig"):
-            shutil.copy2(path, path + ".ruorig")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(new_data)
-        # сжатые копии, если они есть, иначе nginx отдаст старый файл
-        if os.path.exists(path + ".gz"):
-            with open(path, "rb") as fin, gzip.open(path + ".gz", "wb") as fout:
-                fout.write(fin.read())
-            print(f"  {short}: .gz пересоздан")
-        if os.path.exists(path + ".br"):
-            os.rename(path + ".br", path + ".br.stale")
-            print(f"  {short}: устаревший .br отключён (.br.stale)")
+            if target not in new:
+                print(f"  {short}: ВНИМАНИЕ: {name} — шаблон не найден")
+    if not changes:
+        print(f"  {short}: уже в нужном виде"); continue
+    if not os.path.exists(path + ".ruorig") or any(o in data for _, o, t, _ in SLOTS if o != t):
+        shutil.copy2(path, path + ".ruorig")
+    open(path, "w", encoding="utf-8").write(new)
+    if os.path.exists(path + ".gz"):
+        with open(path, "rb") as fin, gzip.open(path + ".gz", "wb") as fout: fout.write(fin.read())
+    if os.path.exists(path + ".br"):
+        os.rename(path + ".br", path + ".br.stale")
+    print(f"  {short}: изменено: {', '.join(changes)}")
 PYEOF
 
 # --- Шаг 7: Перезапуск сервиса ---

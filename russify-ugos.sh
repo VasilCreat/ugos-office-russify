@@ -53,10 +53,12 @@ if [ "$MODE" = install ]; then
     [ -d "$SRC" ] || { echo "Нет каталога переводов: $SRC"; exit 1; }
 fi
 
-# Режим без принудительного русского (эксперимент): RUSSIFY_NOFORCE=1 включает (запоминается), =0 выключает.
-[ "${RUSSIFY_NOFORCE:-}" = 1 ] && touch "$STATE_DIR/noforce"
-[ "${RUSSIFY_NOFORCE:-}" = 0 ] && rm -f "$STATE_DIR/noforce"
-export RUSSIFY_NOFORCE_ON=0; [ -e "$STATE_DIR/noforce" ] && RUSSIFY_NOFORCE_ON=1
+# По умолчанию язык решает система: мы лишь добавляем русский в её списки и кладём переводы.
+# Старая принудительная подмена языка в оболочке (обход, если система не принимает ru-RU)
+# включается только явно: RUSSIFY_FORCE=1 (запоминается), выключается RUSSIFY_FORCE=0.
+[ "${RUSSIFY_FORCE:-}" = 1 ] && touch "$STATE_DIR/force-ru"
+[ "${RUSSIFY_FORCE:-}" = 0 ] && rm -f "$STATE_DIR/force-ru"
+export RUSSIFY_FORCE_ON=0; [ -e "$STATE_DIR/force-ru" ] && RUSSIFY_FORCE_ON=1
 
 python3 - "$MODE" "${SRC:-}" "$MANIFEST" "$ROOTS" << 'PY'
 import glob, gzip, json, os, re, shutil, sys
@@ -233,12 +235,12 @@ if mode == "install":
         if not os.path.exists(os.path.join(page, "locale", "ru-RU.json")):
             skipped += 1; continue
         s = open(f, encoding="utf-8").read()
-        if os.environ.get("RUSSIFY_NOFORCE_ON") == "1":
+        if os.environ.get("RUSSIFY_FORCE_ON") != "1":
             # без принудительной подмены: язык выбирает сама система (русский есть в её списке)
             if os.path.exists(f + ".ruorig"):
                 data = open(f + ".ruorig", "rb").read()
                 open(f, "wb").write(data); write_gz(f, data); restore_br(f); os.remove(f + ".ruorig")
-                print("снят патч framework (режим без подмены):", f)
+                print("снят патч framework (язык решает система):", f)
             continue
         if DONE.search(s):
             continue
@@ -286,6 +288,7 @@ else:
     print("Откат завершён, восстановлено framework: %d" % n)
 PY
 RC=$?
+[ "$MODE" = revert ] && rm -f "$STATE_DIR/force-ru" "$STATE_DIR/noforce"
 [ -n "$TMP" ] && rm -rf "$TMP"
 echo
 echo "Обнови страницу в браузере с очисткой кеша (Ctrl+F5)."
