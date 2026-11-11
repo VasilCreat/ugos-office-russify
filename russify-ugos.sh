@@ -6,13 +6,18 @@
 #   sudo bash russify-ugos.sh            # установить / обновить
 #   sudo bash russify-ugos.sh --revert   # вернуть как было
 #
-# Что делает:
-#  1. Берёт готовые переводы ru/<корень>/<приложение>/.../ru-RU.json из репозитория
-#     и кладёт их рядом с en-US.json соответствующего приложения.
-#  2. В ugos-framework-*.js принудительно выбирает язык ru-RU, но ТОЛЬКО там, где
-#     рядом есть ru-RU.json (иначе приложение сломалось бы на 404).
-#  3. Обновляет .gz-копии, отключает .br (иначе сервер отдаст старое).
-# Строки, которых нет в переводе, показываются по-английски (откат vue-i18n на en-US).
+# Как это работает (подробно: docs/LANGUAGES.md).
+# Служба и шлюз UGOS принимают только свои 11 языков, список зашит в программы, поэтому
+# настоящий язык ru-RU добавить нельзя. Мы занимаем слот корейского (ko-KR):
+#  1. В /ugreen/language/.language.ini у ko-KR название меняется на «Русский»:
+#     так пункт появляется в списке языков, а система сама считает его корейским
+#     и без проблем отдаёт его приложениям, шлюзу, Office.
+#  2. Готовые переводы ru/<корень>/<приложение>/.../ru-RU.json кладутся как locale/ko-KR.json
+#     (оригинал сохраняется рядом как ko-KR.json.ruorig). Где перевода нет, кладётся {}:
+#     строки берутся из en-US (откат vue-i18n), а не показываются по-корейски.
+#  3. В config.json приложений запись i18n для ko-KR (название и описание приложения)
+#     заменяется русской; оригинал сохраняется отдельно.
+# Английский (en-US) не трогается. Откат возвращает всё как было.
 
 MODE=install
 case "$1" in
@@ -53,92 +58,47 @@ if [ "$MODE" = install ]; then
     [ -d "$SRC" ] || { echo "Нет каталога переводов: $SRC"; exit 1; }
 fi
 
-# По умолчанию язык решает система: мы лишь добавляем русский в её списки и кладём переводы.
-# Старая принудительная подмена языка в оболочке (обход, если система не принимает ru-RU)
-# включается только явно: RUSSIFY_FORCE=1 (запоминается), выключается RUSSIFY_FORCE=0.
-[ "${RUSSIFY_FORCE:-}" = 1 ] && touch "$STATE_DIR/force-ru"
-[ "${RUSSIFY_FORCE:-}" = 0 ] && rm -f "$STATE_DIR/force-ru"
-export RUSSIFY_FORCE_ON=0; [ -e "$STATE_DIR/force-ru" ] && RUSSIFY_FORCE_ON=1
-
 python3 - "$MODE" "${SRC:-}" "$MANIFEST" "$ROOTS" << 'PY'
 import glob, gzip, json, os, re, shutil, sys
 
 mode, src, manifest, roots_s = sys.argv[1:5]
 roots = dict(r.split("=", 1) for r in roots_s.split())
-# switchLang в разных сборках: async/не async, с значением по умолчанию или без.
-# Пустую заглушку switchLang(e){} пропускаем.
-SW = re.compile(r'(?:async )?switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{(?!\})')
-# Русский подставляется только если язык не выбран явно (пусто / en-US, т.е. автовыбор по браузеру).
-# Явно выбранный в системе язык (Deutsch, 한국어, Русский...) больше не перебивается.
-INJ = ' %(v)s=(!%(v)s||%(v)s==="en-US")?"ru-RU":%(v)s;'   # вставляется сразу после "{"
-DONE = re.compile(r'switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{ \1=\(!\1\|\|\1==="en-US"\)\?"ru-RU":\1;')
-DONE_OLD = re.compile(r'switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{ \1="ru-RU";')
+state_dir = os.path.dirname(manifest)
+SLOT = "ko-KR"                      # слот языка, который занимает русский
+SLOT_JSON = SLOT + ".json"
+LANGDIR = os.environ.get("RUSSIFY_LANGDIR", "/ugreen/language")
+INI = os.path.join(LANGDIR, ".language.ini")
+INI_SIDE = os.path.join(state_dir, "slot-ini.txt")        # исходное название слота в .language.ini
+I18N_SIDE = os.path.join(state_dir, "slot-i18n.json")     # исходные записи i18n слота
+NAME = "Русский"
 
 def write_gz(path, data):
     with gzip.GzipFile(path + ".gz", "wb", mtime=0) as g:
         g.write(data)
-
-def disable_br(path):
-    b = path + ".br"
-    if os.path.exists(b):
-        os.replace(b, b + ".stale")
 
 def restore_br(path):
     s = path + ".br.stale"
     if os.path.exists(s):
         os.replace(s, path + ".br")
 
-LANGDIR = os.environ.get("RUSSIFY_LANGDIR", "/ugreen/language")
-LANG_RE = re.compile(r'("languageList"\s*:\s*\[)([^\]]*)(\])')
-
 def lang_configs():
     for key, base in roots.items():
         for c in sorted(glob.glob(os.path.join(base, "*", "config.json"))):
             yield c
 
-def lang_add():
-    """Добавляет Русский в выпадающий список языков (Панель управления -> Время и язык)."""
-    n = 0
-    for c in lang_configs():
-        t = open(c, encoding="utf-8").read()
-        m = LANG_RE.search(t)
-        if not m or '"en-US"' not in m.group(2) or '"ru-RU"' in m.group(2):
-            continue
-        t = t[:m.end(2)] + ',"ru-RU"' + t[m.end(2):]
-        open(c, "w", encoding="utf-8").write(t); n += 1
-    ini = os.path.join(LANGDIR, ".language.ini")
-    if os.path.exists(ini):
-        t = open(ini, encoding="utf-8").read()
-        if "[ru-RU]" not in t:
-            if not t.endswith("\n"): t += "\n"
-            t += "\n[ru-RU]\nname=Русский\nenable=true\n"
-            open(ini, "w", encoding="utf-8").write(t)
-            print("язык: Русский добавлен в", ini)
-    print("язык: ru-RU добавлен в languageList у приложений: %d" % n)
+def frameworks():
+    for key, base in roots.items():
+        if not os.path.isdir(base): continue
+        for dp, dns, fns in os.walk(base):
+            dns[:] = [d for d in dns if d not in ("node_modules", "onlyoffice", "locale")]
+            for fn in fns:
+                if fn.startswith("ugos-framework-") and fn.endswith(".js"):
+                    yield os.path.join(dp, fn)
 
-def lang_remove():
-    n = 0
-    for c in lang_configs():
-        t = open(c, encoding="utf-8").read()
-        m = LANG_RE.search(t)
-        if not m or '"ru-RU"' not in m.group(2):
-            continue
-        items = [x for x in re.findall(r'"[^"]*"', m.group(2)) if x != '"ru-RU"']
-        t = t[:m.start(2)] + ",".join(items) + t[m.end(2):]
-        open(c, "w", encoding="utf-8").write(t); n += 1
-    ini = os.path.join(LANGDIR, ".language.ini")
-    if os.path.exists(ini):
-        t = open(ini, encoding="utf-8").read()
-        t2 = re.sub(r"\n?\[ru-RU\]\nname=[^\n]*\nenable=[^\n]*\n?", "\n", t).rstrip("\n") + "\n"
-        if t2 != t:
-            open(ini, "w", encoding="utf-8").write(t2)
-            print("язык: Русский убран из", ini)
-    print("язык: ru-RU убран из languageList у приложений: %d" % n)
-
+# ---- блок i18n в config.json (правим текст точечно, формат файла сохраняется) ----
 I18N_KEY = re.compile(r'"i18n"\s*:\s*')
 
 def i18n_span(t):
-    """Находит массив i18n в тексте config.json: (начало, конец, список) или None."""
     m = I18N_KEY.search(t)
     if not m: return None
     try:
@@ -150,142 +110,195 @@ def i18n_span(t):
 def dump_i18n(arr):
     return json.dumps(arr, ensure_ascii=False, separators=(",", ":"))
 
-def i18n_add(src):
-    """Добавляет запись ru-RU (названия и описания приложений) в блок i18n config.json."""
-    p = os.path.join(src, "apps-i18n.json")
-    if not os.path.exists(p):
-        print("названия приложений: нет apps-i18n.json, пропуск"); return
-    tr = json.load(open(p, encoding="utf-8"))
+# ---- очистка следов прошлых версий (язык ru-RU, подмена switchLang) ----
+LANG_RE = re.compile(r'("languageList"\s*:\s*\[)([^\]]*)(\])')
+
+def legacy_cleanup():
     n = 0
-    for c in lang_configs():
-        t = open(c, encoding="utf-8").read()
-        sp = i18n_span(t)
-        if not sp: continue
-        a, b, arr = sp
-        en = next((x for x in arr if x.get("langName") == "en-US"), None)
-        if not en or en.get("name") not in tr["apps"]: continue
-        r = tr["apps"][en["name"]]
-        rec = dict(en); rec["langName"] = "ru-RU"; rec["name"] = r["name"]
-        if en.get("description") == r["description_en"]: rec["description"] = r["description"]
-        if "tags" in en: rec["tags"] = [tr["tags"].get(x, x) for x in en["tags"]]
-        arr = [x for x in arr if x.get("langName") != "ru-RU"] + [rec]
-        new = t[:a] + dump_i18n(arr) + t[b:]
+    for f in frameworks():                                   # старая подмена switchLang
+        o = f + ".ruorig"
+        if os.path.exists(o):
+            data = open(o, "rb").read()
+            open(f, "wb").write(data); write_gz(f, data); restore_br(f)
+            os.remove(o); n += 1
+    k = 0
+    for c in lang_configs():                                 # ru-RU в languageList и i18n
+        t = open(c, encoding="utf-8").read(); new = t
+        m = LANG_RE.search(new)
+        if m and '"ru-RU"' in m.group(2):
+            items = [x for x in re.findall(r'"[^"]*"', m.group(2)) if x != '"ru-RU"']
+            new = new[:m.start(2)] + ",".join(items) + new[m.end(2):]
+        sp = i18n_span(new)
+        if sp and any(x.get("langName") == "ru-RU" for x in sp[2]):
+            a, b, arr = sp
+            new = new[:a] + dump_i18n([x for x in arr if x.get("langName") != "ru-RU"]) + new[b:]
         if new != t:
-            open(c, "w", encoding="utf-8").write(new); n += 1
-    print("названия приложений: ru-RU записей добавлено/обновлено: %d" % n)
+            open(c, "w", encoding="utf-8").write(new); k += 1
+    if os.path.exists(INI):                                  # секция [ru-RU] в .language.ini
+        t = open(INI, encoding="utf-8").read()
+        t2 = re.sub(r"\n?\[ru-RU\]\nname=[^\n]*\nenable=[^\n]*\n?", "\n", t).rstrip("\n") + "\n"
+        if t2 != t:
+            open(INI, "w", encoding="utf-8").write(t2); k += 1
+    if n or k:
+        print("убраны следы прошлой версии (подмена языка: %d, списки: %d)" % (n, k))
 
-def i18n_remove():
-    n = 0
-    for c in lang_configs():
-        t = open(c, encoding="utf-8").read()
-        sp = i18n_span(t)
-        if not sp: continue
-        a, b, arr = sp
-        keep = [x for x in arr if x.get("langName") != "ru-RU"]
-        if len(keep) == len(arr): continue
-        open(c, "w", encoding="utf-8").write(t[:a] + dump_i18n(keep) + t[b:]); n += 1
-    print("названия приложений: ru-RU убран у приложений: %d" % n)
+# ---- манифест: строки "M|путь" (был оригинал, лежит .ruorig) и "C|путь" (файла не было) ----
+def read_manifest():
+    kinds, legacy = {}, []
+    if os.path.exists(manifest):
+        for line in open(manifest, encoding="utf-8").read().split("\n"):
+            line = line.strip()
+            if not line: continue
+            if "|" in line and line[0] in "MC" and line[1] == "|":
+                kinds[line[2:]] = line[0]
+            else:
+                legacy.append(line)                          # прежний формат: просто пути ru-RU.json
+    return kinds, legacy
 
-def frameworks():
-    for key, base in roots.items():
-        if not os.path.isdir(base): continue
-        for dp, dns, fns in os.walk(base):
-            dns[:] = [d for d in dns if d not in ("node_modules", "onlyoffice", "locale")]
-            for fn in fns:
-                if fn.startswith("ugos-framework-") and fn.endswith(".js"):
-                    yield os.path.join(dp, fn)
+def put_locale(dst, data, kinds):
+    """Записывает locale/ko-KR.json, сохраняя оригинал (.ruorig); повторный запуск оригинал не затирает."""
+    bak = dst + ".ruorig"
+    if dst in kinds:
+        kind = kinds[dst]                                    # уже наш файл: оригинал был сохранён раньше
+    elif os.path.exists(dst):
+        if not os.path.exists(bak): shutil.copy2(dst, bak)
+        kind = "M"
+    else:
+        kind = "C"
+    cur = open(dst, "rb").read() if os.path.exists(dst) else None
+    if cur != data:
+        open(dst, "wb").write(data)
+    write_gz(dst, data)
+    return kind
 
 if mode == "install":
-    installed = []
-    old = open(manifest).read().split() if os.path.exists(manifest) else []
-    # 1. переводы
+    kinds, legacy = read_manifest()
+    legacy_cleanup()
+    for p in legacy:                                         # файлы ru-RU.json прошлой версии -> пустые заглушки
+        if os.path.exists(p):
+            open(p, "wb").write(b"{}"); write_gz(p, b"{}")
+    new_kinds = {}
+    handled = set()
+    # 1. переводы -> locale/ko-KR.json
+    n_tr = 0
     for key, base in roots.items():
         sd = os.path.join(src, key)
         if not os.path.isdir(sd): continue
         for dp, dns, fns in os.walk(sd):
             for fn in fns:
                 if fn != "ru-RU.json": continue
-                rel = os.path.relpath(os.path.join(dp, fn), sd)
-                dst = os.path.join(base, rel)
-                if not os.path.isdir(os.path.dirname(dst)):
+                rel = os.path.relpath(dp, sd)
+                ddir = os.path.join(base, rel)
+                if not os.path.isdir(ddir):
                     print("пропуск (нет приложения):", rel); continue
                 data = open(os.path.join(dp, fn), "rb").read()
-                json.loads(data.decode("utf-8"))           # валидность JSON
-                cur = open(dst, "rb").read() if os.path.exists(dst) else None
-                if cur != data:
-                    open(dst, "wb").write(data); write_gz(dst, data)
-                    print("перевод:", rel)
-                installed.append(dst)
-    # 1б. пустые ru-RU.json там, где перевода ещё нет: язык ru-RU выбирается везде
-    #     (рабочий стол задаёт язык приложениям), а непереведённые строки берутся из en-US.
-    empty = 0
+                json.loads(data.decode("utf-8"))
+                dst = os.path.join(ddir, SLOT_JSON)
+                new_kinds[dst] = put_locale(dst, data, kinds)
+                handled.add(ddir); n_tr += 1
+    # 1б. где перевода нет: пустой {} в слот (непереведённое берётся из en-US, а не по-корейски)
+    n_empty = 0
     for key, base in roots.items():
         if not os.path.isdir(base): continue
         for dp, dns, fns in os.walk(base):
             dns[:] = [d for d in dns if d not in ("node_modules", "onlyoffice")]
-            if os.path.basename(dp) == "locale" and "en-US.json" in fns and "ru-RU.json" not in fns:
-                dst = os.path.join(dp, "ru-RU.json")
-                open(dst, "wb").write(b"{}"); write_gz(dst, b"{}")
-                installed.append(dst); empty += 1
-    if empty: print("пустых заготовок ru-RU.json (строки пока на английском): %d" % empty)
-    # 2. patch framework
-    patched = 0; skipped = 0
-    for f in frameworks():
-        page = os.path.dirname(os.path.dirname(f))
-        if not os.path.exists(os.path.join(page, "locale", "ru-RU.json")):
-            skipped += 1; continue
-        s = open(f, encoding="utf-8").read()
-        if os.environ.get("RUSSIFY_FORCE_ON") != "1":
-            # без принудительной подмены: язык выбирает сама система (русский есть в её списке)
-            if os.path.exists(f + ".ruorig"):
-                data = open(f + ".ruorig", "rb").read()
-                open(f, "wb").write(data); write_gz(f, data); restore_br(f); os.remove(f + ".ruorig")
-                print("снят патч framework (язык решает система):", f)
-            continue
-        if DONE.search(s):
-            continue
-        if DONE_OLD.search(s) and os.path.exists(f + ".ruorig"):
-            s = open(f + ".ruorig", encoding="utf-8").read()   # старый жёсткий патч: переделываем с оригинала
-        m = SW.search(s)
+            if os.path.basename(dp) == "locale" and "en-US.json" in fns and dp not in handled:
+                dst = os.path.join(dp, SLOT_JSON)
+                new_kinds[dst] = put_locale(dst, b"{}", kinds); n_empty += 1
+    print("переводов: %d, пустых заготовок (строки на английском): %d" % (n_tr, n_empty))
+    # 2. название слота в списке языков
+    if os.path.exists(INI):
+        t = open(INI, encoding="utf-8").read()
+        m = re.search(r"(\[%s\]\s*\nname=)([^\n]*)" % SLOT, t)
         if not m:
-            print("ВНИМАНИЕ: не найдена switchLang в", f)
-            for mm in list(re.finditer(r"switchLang\(", s))[:4]:
-                print("     >>", s[max(0, mm.start() - 40):mm.start() + 110].replace("\n", " "))
-            continue
-        if not os.path.exists(f + ".ruorig"):
-            shutil.copy2(f, f + ".ruorig")
-        new = s[:m.end()] + INJ % {"v": m.group(1)} + s[m.end():]
-        data = new.encode("utf-8")
-        open(f, "wb").write(data); write_gz(f, data); disable_br(f)
-        print("патч framework:", f); patched += 1
-    # 2б. выбор «Русский» в списке языков
-    lang_add()
-    i18n_add(src)
-    # 3. манифест
-    with open(manifest, "w") as mf:
-        mf.write("\n".join(sorted(set(installed) | {p for p in old if os.path.exists(p)})) + "\n")
-    print("Готово: переводов %d, патчей framework %d (пропущено без перевода: %d)" % (len(installed), patched, skipped))
+            print("ВНИМАНИЕ: в .language.ini нет секции [%s], язык в списке не появится" % SLOT)
+        elif m.group(2).strip() != NAME:
+            if not os.path.exists(INI_SIDE):
+                open(INI_SIDE, "w", encoding="utf-8").write(m.group(2))
+            open(INI, "w", encoding="utf-8").write(t[:m.start(2)] + NAME + t[m.end(2):])
+            print("язык: «%s» -> «%s» в %s" % (m.group(2).strip(), NAME, INI))
+    else:
+        print("ВНИМАНИЕ: нет файла", INI)
+    # 3. названия и описания приложений (i18n) в слот
+    tp = os.path.join(src, "apps-i18n.json")
+    if os.path.exists(tp):
+        tr = json.load(open(tp, encoding="utf-8"))
+        side = json.load(open(I18N_SIDE, encoding="utf-8")) if os.path.exists(I18N_SIDE) else {}
+        n = 0
+        for c in lang_configs():
+            t = open(c, encoding="utf-8").read()
+            sp = i18n_span(t)
+            if not sp: continue
+            a, b, arr = sp
+            en = next((x for x in arr if x.get("langName") == "en-US"), None)
+            if not en or en.get("name") not in tr["apps"]: continue
+            r = tr["apps"][en["name"]]
+            rec = dict(en); rec["langName"] = SLOT; rec["name"] = r["name"]
+            if en.get("description") == r["description_en"]: rec["description"] = r["description"]
+            if "tags" in en: rec["tags"] = [tr["tags"].get(x, x) for x in en["tags"]]
+            idx = next((i for i, x in enumerate(arr) if x.get("langName") == SLOT), None)
+            if c not in side:
+                side[c] = arr[idx] if idx is not None else None
+            if idx is None: arr.append(rec)
+            else: arr[idx] = rec
+            new = t[:a] + dump_i18n(arr) + t[b:]
+            if new != t:
+                open(c, "w", encoding="utf-8").write(new); n += 1
+        json.dump(side, open(I18N_SIDE, "w", encoding="utf-8"), ensure_ascii=False)
+        print("названия приложений: записей изменено: %d" % n)
+    else:
+        print("названия приложений: нет apps-i18n.json, пропуск")
+    # 4. манифест
+    with open(manifest, "w", encoding="utf-8") as mf:
+        mf.write("\n".join("%s|%s" % (k, p) for p, k in sorted(new_kinds.items())) + "\n")
+    print("Готово. В системе выберите язык «%s»." % NAME)
 else:
-    n = 0
-    for f in frameworks():
-        o = f + ".ruorig"
-        if os.path.exists(o):
-            data = open(o, "rb").read()
-            open(f, "wb").write(data); write_gz(f, data); restore_br(f)
-            os.remove(o); n += 1
-            print("откат framework:", f)
-    if os.path.exists(manifest):
-        # Вместо удаления оставляем пустые заглушки ru-RU.json: если в браузере остался
-        # запомненный язык ru-RU, окна приложений покажут английский, а не белый экран
-        # (без файла запрос ru-RU.json даёт 404, и дочерние окна не открываются).
-        for p in open(manifest).read().split():
-            if os.path.exists(p):
-                open(p, "wb").write(b"{}"); write_gz(p, b"{}")
-                print("перевод убран (оставлена пустая заглушка):", p)
-        os.remove(manifest)
-    lang_remove()
-    i18n_remove()
-    print("Откат завершён, восстановлено framework: %d" % n)
+    kinds, legacy = read_manifest()
+    # 1. файлы переводов: вернуть оригиналы
+    r_ok = r_stub = 0
+    for p, k in sorted(kinds.items()):
+        bak = p + ".ruorig"
+        if k == "M" and os.path.exists(bak):
+            data = open(bak, "rb").read()
+            open(p, "wb").write(data); write_gz(p, data)
+            os.remove(bak); r_ok += 1
+        elif k == "C" and os.path.exists(p):
+            # файла не было: оставляем пустой {} (если в браузере запомнен язык, окно не будет пустым)
+            open(p, "wb").write(b"{}"); write_gz(p, b"{}"); r_stub += 1
+    for p in legacy:
+        if os.path.exists(p):
+            open(p, "wb").write(b"{}"); write_gz(p, b"{}")
+    print("файлы языка: возвращено оригиналов %d, оставлено пустых заглушек %d" % (r_ok, r_stub))
+    # 2. название слота в списке языков
+    if os.path.exists(INI_SIDE):
+        orig = open(INI_SIDE, encoding="utf-8").read()
+        if os.path.exists(INI):
+            t = open(INI, encoding="utf-8").read()
+            m = re.search(r"(\[%s\]\s*\nname=)([^\n]*)" % SLOT, t)
+            if m:
+                open(INI, "w", encoding="utf-8").write(t[:m.start(2)] + orig + t[m.end(2):])
+                print("язык: название слота возвращено: «%s»" % orig.strip())
+        os.remove(INI_SIDE)
+    # 3. i18n приложений
+    if os.path.exists(I18N_SIDE):
+        side = json.load(open(I18N_SIDE, encoding="utf-8")); n = 0
+        for c, orig in side.items():
+            if not os.path.exists(c): continue
+            t = open(c, encoding="utf-8").read()
+            sp = i18n_span(t)
+            if not sp: continue
+            a, b, arr = sp
+            idx = next((i for i, x in enumerate(arr) if x.get("langName") == SLOT), None)
+            if idx is None: continue
+            if orig is None: del arr[idx]
+            else: arr[idx] = orig
+            open(c, "w", encoding="utf-8").write(t[:a] + dump_i18n(arr) + t[b:]); n += 1
+        os.remove(I18N_SIDE)
+        print("названия приложений: возвращено у %d" % n)
+    # 4. следы прошлых версий
+    legacy_cleanup()
+    if os.path.exists(manifest): os.remove(manifest)
+    print("Откат завершён.")
 PY
 RC=$?
 [ "$MODE" = revert ] && rm -f "$STATE_DIR/force-ru" "$STATE_DIR/noforce"

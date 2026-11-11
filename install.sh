@@ -127,6 +127,8 @@ LANG_DYN = '(function(){var l=new URLSearchParams(window.location.search).get("l
 API_DYN = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();'
 PARENT_DYN = '"ugos:locale-sync-parent",{detail:{locale:(e.locale&&"en-US"!==e.locale?e.locale:"ru-RU")}}'
 
+LANG_SLOT = '(function(){var l=new URLSearchParams(window.location.search).get("lang")||"en-US";return l==="ko-KR"?"ru-RU":l})()'
+API_SLOT = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US";return l==="ko-KR"?"ru-RU":l})();'
 LANG_STRICT = '(new URLSearchParams(window.location.search).get("lang")||"en-US")'
 API_STRICT = 'params += "&lang=" + (new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US");'
 
@@ -143,6 +145,10 @@ sse_pairs = [
      'this.appOptions={},this.appOptions.lang=t.config.lang}'),
     ('this.appOptions.lang=' + LANG_DYN + ',this.appOptions.location=',
      'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
+    ('this.appOptions={},this.appOptions.lang=' + LANG_SLOT + '}',
+     'this.appOptions={},this.appOptions.lang=t.config.lang}'),
+    ('this.appOptions.lang=' + LANG_SLOT + ',this.appOptions.location=',
+     'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location='),
     ('this.appOptions={},this.appOptions.lang=' + LANG_STRICT + '}',
      'this.appOptions={},this.appOptions.lang=t.config.lang}'),
     ('this.appOptions.lang=' + LANG_STRICT + ',this.appOptions.location=',
@@ -154,7 +160,7 @@ for sub in ("app.js", "ie/app.js"):
 # 2. api.js
 api_orig = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
 undo(ds + "/api/documents/api.js",
-     [(API_STRICT, api_orig), (API_DYN, api_orig), ('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
+     [(API_SLOT, api_orig), (API_STRICT, api_orig), (API_DYN, api_orig), ('params += "&lang=ru-RU";', api_orig), ('params += "&lang=ru";', api_orig)],
      "api.js")
 
 # 3. ugos-framework: два патча. «Сообщение родительскому окну» откатывается
@@ -214,7 +220,15 @@ for p in (sse + "app.js.br.stale", sse + "ie/app.js.br.stale", ds + "/api/docume
     if os.path.exists(p) and not os.path.exists(p[:-6]):
         os.rename(p, p[:-6])
 
-# 4. перевод: убрать русский, вернуть английский
+# 4. перевод: вернуть оригинальный ko-KR.json, убрать ru-RU, вернуть английский
+kb = os.path.join(locale, "ko-KR.json.ruorig")
+if os.path.exists(kb):
+    data = open(kb, "rb").read()
+    open(os.path.join(locale, "ko-KR.json"), "wb").write(data)
+    with gzip.open(os.path.join(locale, "ko-KR.json.gz"), "wb") as g:
+        g.write(data)
+    os.remove(kb)
+    print("  возвращён ko-KR.json")
 for name in ("ru-RU.json", "ru-RU.json.gz"):
     p = os.path.join(locale, name)
     if os.path.exists(p):
@@ -297,10 +311,10 @@ fi
 echo "=== Русификация UGOS Online Office ==="
 echo ""
 
-# --- Шаг 1: Создаём/обновляем ru-RU.json ---
-echo "[1/8] Создаём файл локализации ru-RU.json..."
+# --- Шаг 1: Русский перевод кладётся в слот ko-KR (система принимает только свои 11 языков) ---
+echo "[1/8] Создаём файл локализации (слот ko-KR)..."
 python3 - << 'PYEOF'
-import json, gzip, os
+import json, gzip, os, shutil
 
 locale_dir = "/volume1/@appstore/com.ugreen.office/www/locale"
 
@@ -434,13 +448,27 @@ ru_locale = {
 }
 
 os.makedirs(locale_dir, exist_ok=True)
-path = os.path.join(locale_dir, "ru-RU.json")
-with open(path, 'w') as f:
-    json.dump(ru_locale, f, ensure_ascii=False)
+path = os.path.join(locale_dir, "ko-KR.json")
+new_text = json.dumps(ru_locale, ensure_ascii=False)
+# оригинал (корейский) сохраняем один раз; свой файл (уже русский) за оригинал не принимаем
+if os.path.exists(path) and not os.path.exists(path + ".ruorig"):
+    try:
+        ours = json.load(open(path, encoding="utf-8")) == ru_locale
+    except ValueError:
+        ours = False
+    if not ours:
+        shutil.copy2(path, path + ".ruorig")
+with open(path, 'w', encoding="utf-8") as f:
+    f.write(new_text)
 with open(path, 'rb') as fin:
     with gzip.open(path + '.gz', 'wb') as fout:
         fout.write(fin.read())
-print("  ru-RU.json создан/обновлён")
+# следы прошлых версий: отдельный ru-RU.json больше не нужен
+for n in ("ru-RU.json", "ru-RU.json.gz"):
+    p = os.path.join(locale_dir, n)
+    if os.path.exists(p):
+        os.remove(p)
+print("  ko-KR.json (русский перевод) создан/обновлён")
 PYEOF
 
 # --- Шаг 2: Возвращаем en-US locale (если ранние версии скрипта его спрятали) ---
@@ -499,20 +527,21 @@ if not done:
     print("  ВНИМАНИЕ: ugos-framework не найден")
 PYEOF
 
-# --- Шаг 4: Добавляем ru-RU в config.json Office ---
-echo "[4/8] Добавляем ru-RU в config.json..."
+# --- Шаг 4: config.json Office: убрать ru-RU, оставшийся от прошлых версий ---
+# Язык ru-RU в списки не добавляется: русский занимает слот ko-KR, он там уже есть.
+echo "[4/8] config.json: убираем следы прошлых версий..."
 python3 - << 'PYEOF'
 import json
 path = "/volume1/@appstore/com.ugreen.office/config.json"
 with open(path) as f:
     c = json.load(f)
-if "ru-RU" not in c.get("languageList", []):
-    c.setdefault("languageList", []).append("ru-RU")
+if "ru-RU" in c.get("languageList", []):
+    c["languageList"] = [x for x in c["languageList"] if x != "ru-RU"]
     with open(path, 'w') as f:
         json.dump(c, f, indent=2)
-    print("  ru-RU добавлен в languageList")
+    print("  ru-RU убран из languageList")
 else:
-    print("  ru-RU уже в списке")
+    print("  чисто")
 PYEOF
 
 # --- Шаг 5: api.js — язык редактора берётся из адреса страницы (его передаёт система) ---
@@ -525,8 +554,10 @@ import gzip, os, shutil
 
 api_path = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/api/documents/api.js"
 orig = 'if (config.editorConfig && config.editorConfig.lang)\n            params += "&lang=" + config.editorConfig.lang;'
-target = 'params += "&lang=" + (new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US");'
+# система считает русский корейским (слот ko-KR), редактору отдаём настоящий ru-RU
+target = 'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US";return l==="ko-KR"?"ru-RU":l})();'
 old_variants = [
+    'params += "&lang=" + (new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"en-US");',
     'params += "&lang=ru-RU";', 'params += "&lang=ru";',
     'params += "&lang=" + (function(){var l=new URLSearchParams(window.location.search).get("lang")||(config.editorConfig&&config.editorConfig.lang)||"";return l&&l!=="en-US"?l:"ru-RU"})();',
 ]
@@ -556,7 +587,8 @@ python3 - << 'PYEOF'
 import gzip, os, shutil
 
 base = "/volume1/@appstore/com.ugreen.office/onlyoffice/documentserver/web-apps/apps/spreadsheeteditor/main/"
-LS = '(new URLSearchParams(window.location.search).get("lang")||"en-US")'
+LS = '(function(){var l=new URLSearchParams(window.location.search).get("lang")||"en-US";return l==="ko-KR"?"ru-RU":l})()'
+LSTRICT = '(new URLSearchParams(window.location.search).get("lang")||"en-US")'
 LDYN = '(function(){var l=new URLSearchParams(window.location.search).get("lang");return l&&l!=="en-US"?l:"ru-RU"})()'
 # (название, оригинал, цель, прежние наши варианты)
 SLOTS = [
@@ -567,11 +599,13 @@ SLOTS = [
     ("язык формул",
      'this.appOptions={},this.appOptions.lang=t.config.lang}',
      'this.appOptions={},this.appOptions.lang=' + LS + '}',
-     ['this.appOptions={},this.appOptions.lang="ru-RU"}', 'this.appOptions={},this.appOptions.lang=' + LDYN + '}']),
+     ['this.appOptions={},this.appOptions.lang="ru-RU"}', 'this.appOptions={},this.appOptions.lang=' + LDYN + '}',
+      'this.appOptions={},this.appOptions.lang=' + LSTRICT + '}']),
     ("язык словаря",
      'this.appOptions.lang=this.editorConfig.lang,this.appOptions.location=',
      'this.appOptions.lang=' + LS + ',this.appOptions.location=',
-     ['this.appOptions.lang="ru-RU",this.appOptions.location=', 'this.appOptions.lang=' + LDYN + ',this.appOptions.location=']),
+     ['this.appOptions.lang="ru-RU",this.appOptions.location=', 'this.appOptions.lang=' + LDYN + ',this.appOptions.location=',
+      'this.appOptions.lang=' + LSTRICT + ',this.appOptions.location=']),
 ]
 for path in (base + "app.js", base + "ie/app.js"):
     short = os.path.relpath(path, base)
