@@ -59,8 +59,11 @@ roots = dict(r.split("=", 1) for r in roots_s.split())
 # switchLang в разных сборках: async/не async, с значением по умолчанию или без.
 # Пустую заглушку switchLang(e){} пропускаем.
 SW = re.compile(r'(?:async )?switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{(?!\})')
-INJ = ' %s="ru-RU";'   # вставляется сразу после "{"
-DONE = re.compile(r'switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{ \1="ru-RU";')
+# Русский подставляется только если язык не выбран явно (пусто / en-US, т.е. автовыбор по браузеру).
+# Явно выбранный в системе язык (Deutsch, 한국어, Русский...) больше не перебивается.
+INJ = ' %(v)s=(!%(v)s||%(v)s==="en-US")?"ru-RU":%(v)s;'   # вставляется сразу после "{"
+DONE = re.compile(r'switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{ \1=\(!\1\|\|\1==="en-US"\)\?"ru-RU":\1;')
+DONE_OLD = re.compile(r'switchLang\((\w+)(?:,(\w+)(?:=(?:!1|false))?)?\)\{ \1="ru-RU";')
 
 def write_gz(path, data):
     with gzip.GzipFile(path + ".gz", "wb", mtime=0) as g:
@@ -174,6 +177,8 @@ if mode == "install":
         s = open(f, encoding="utf-8").read()
         if DONE.search(s):
             continue
+        if DONE_OLD.search(s) and os.path.exists(f + ".ruorig"):
+            s = open(f + ".ruorig", encoding="utf-8").read()   # старый жёсткий патч: переделываем с оригинала
         m = SW.search(s)
         if not m:
             print("ВНИМАНИЕ: не найдена switchLang в", f)
@@ -182,7 +187,7 @@ if mode == "install":
             continue
         if not os.path.exists(f + ".ruorig"):
             shutil.copy2(f, f + ".ruorig")
-        new = s[:m.end()] + INJ % m.group(1) + s[m.end():]
+        new = s[:m.end()] + INJ % {"v": m.group(1)} + s[m.end():]
         data = new.encode("utf-8")
         open(f, "wb").write(data); write_gz(f, data); disable_br(f)
         print("патч framework:", f); patched += 1
